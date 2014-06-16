@@ -1,0 +1,16 @@
+extends layout
+
+block content
+  h1= title
+  
+  div.container
+  div.row
+    div#wallOfText.well.profile(style='padding: 10px; padding-left: 20px; height:400px; overflow:scroll;')
+  div.row
+    p
+    button#button-rock.btn.btn-default.btn-lg(type='button', onclick="sendRock()") Rock
+    button#button-paper.btn.btn-default.btn-lg(type='button', onclick="sendPaper()") Paper
+    button#button-scissor.btn.btn-default.btn-lg(type='button', onclick="sendScissors()") Scissor
+
+
+
