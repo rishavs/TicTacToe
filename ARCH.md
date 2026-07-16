@@ -17,6 +17,7 @@ Layered: Scene Manager → Scenes → Systems. All game logic in pure-data packa
 ```
 src/
   main.go          — entry point, creates scene.Manager, runs Ebiten game loop
+  qa.go            — dev QA flags, direct scene launch, one-frame PNG capture
   scene/            — Scene interface, Manager (current scene switching)
     constants.go
     manager.go
@@ -85,6 +86,20 @@ Map generation:
 
 `scene.MapgenScene` converts controls into `MapConfig`, calls `mapgen.Generate`, fits a camera over the generated grid, and renders visible tiles using biome/elevation colors plus optional lighting. Biomes and Light are the only active viewer render toggles. Edges/Fills modes and noisy-edge generation were intentionally dropped after experimentation.
 
+## QA Capture Harness
+
+The executable supports dev-only visual capture flags:
+
+```bash
+go run ./src --qa-scene mapgen --qa-seed 42 --qa-capture .qa-captures/mapgen.png
+```
+
+- `--qa-scene` selects the initial scene: `menu`, `mapgen`, `new`, `battle`, or `settings`.
+- `--qa-seed` controls deterministic mapgen setup.
+- `--qa-capture` saves one rendered 320x180 PNG and exits.
+- Without `--qa-capture`, the game launches normally, optionally starting at `--qa-scene`.
+- Captures are for local visual QA/debugging and should stay in ignored capture folders unless explicitly requested.
+
 ## Key Systems
 
 | System | Package | Purpose |
@@ -92,3 +107,4 @@ Map generation:
 | Scene Manager | `scene` | Scene stack/switching, delegates Update/Draw |
 | Map Generator | `mapgen` | Procedural island generation (deterministic, pure data) |
 | Camera | `camera` | Scroll/zoom viewport into large tile maps |
+| QA Capture | `main` | Direct scene launch and one-frame PNG capture for visual debugging |

@@ -69,8 +69,12 @@ type MapgenScene struct {
 }
 
 func NewMapgenScene() *MapgenScene {
+	return NewMapgenSceneWithSeed(42)
+}
+
+func NewMapgenSceneWithSeed(seed int64) *MapgenScene {
 	loadTheme()
-	s := &MapgenScene{biomesOn: true, lightingOn: true, seed: 42}
+	s := &MapgenScene{biomesOn: true, lightingOn: true, seed: seed}
 	s.cam = camera.New(tileSize)
 	s.ui = buildPanel(s)
 	s.regenerate(s.seed)

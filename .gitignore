@@ -41,3 +41,11 @@ Icon
 npm-debug.log
 
 /bin
+
+# QA/debug capture output
+captures/
+.qa-captures/
+.tmp-qa-captures/
+
+# Local Go build/test cache for agent runs
+.gocache/

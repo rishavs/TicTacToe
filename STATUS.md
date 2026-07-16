@@ -9,6 +9,7 @@
 - [x] LeanSpec MCP connection verified
 - [x] Specs directory structure (`specs/`) with README
 - [x] Added `golang.org/x/image` dependency for text rendering
+- [x] Agent Go checks use repo-local `.gocache/` instead of the default user cache
 
 ## Scene / Menu System
 - [x] `src/scene/` package created with `Scene` interface
@@ -34,6 +35,7 @@
 - [x] **004 — Close-port mapgen2 terrain pipeline** — Current code reconciled and spec closed. Island formula (Chebyshev+noise→water), topological coast, lake elevation handling, BFS-derived downslope, N-spring rivers, sqrt moisture falloff + redistribution, 1.0-elevation temperature, 20-biome classification, BFS randomization, lighting data
 - [x] **005 — Wire noisy edges, fills, and lighting** — Closed as a design decision. Lighting and Biomes toggles remain; Edges/Fills were tried, gave no meaningful benefit, and are intentionally not planned.
 - [x] **006 — Cleanup mapgen and viewer technical debt** — Removed dead river-width/noisy-edge paths, centralized resolution constants, moved active tuning values into MapConfig, reused noise generators, and split map viewer helpers
+- [x] **007 — Dev screenshot capture and direct scene launch** — Added QA flags for direct scene launch, deterministic mapgen seed, and one-frame PNG capture
 
 ## Map Generator
 - [x] `src/mapgen/` package (10 files)
@@ -59,6 +61,7 @@
 - [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth) and checkboxes (Biomes, Light)
 - [x] Edges/Fills viewer modes intentionally dropped after experiment (`005`)
 - [x] Regenerate button, F-key fit, zoom range 0.05×–16×
+- [x] QA capture mode: `--qa-scene`, `--qa-seed`, `--qa-capture`
 
 ## Theme / UI Polish
 - [x] Font swapped from goregular to Press Start 2P (pixel font, embedded via embed.FS)

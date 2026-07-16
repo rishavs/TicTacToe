@@ -25,12 +25,24 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
-	manager := scene.NewManager(scene.NewMenuScene())
+	opts := parseQAOptions()
+	initial, err := newInitialScene(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ebiten.SetWindowSize(scene.InternalWidth*scene.WindowScale, scene.InternalHeight*scene.WindowScale)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Stoneheart")
-	if err := ebiten.RunGame(&Game{manager: manager}); err != nil {
+
+	var game ebiten.Game
+	if opts.capture != "" {
+		game = newCaptureGame(initial, opts.capture)
+	} else {
+		game = &Game{manager: scene.NewManager(initial)}
+	}
+
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }

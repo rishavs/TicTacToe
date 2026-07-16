@@ -9,6 +9,40 @@
 - **CONV.md** — Terse running log of conversations and outcomes. Read on session start for context. Keep under ~400 lines; trim oldest entries when exceeded.
 - **STATUS.md** — Running checklist of completed work and pending todos. Update after every meaningful change.
 
+## Local Go Cache
+
+Keep Go build/test scratch output inside the project folder during agent work. Before running `go test`, `go vet`, `go build`, or `go run`, set `GOCACHE` to `.gocache` for that shell session/command.
+
+PowerShell example:
+
+```powershell
+$env:GOCACHE = "$PWD\.gocache"; go test ./...
+```
+
+Guidelines:
+- Prefer the repo-local `.gocache/` over the default user cache outside the project.
+- `.gocache/` is ignored by git and should never be committed.
+- Do not use `go env -w` for this; keep the setting scoped to the current command/session.
+- Use an existing binary from `bin/` when the task only needs to launch the game and does not need a rebuild.
+
+## QA Capture / Visual Debugging
+
+Use the built-in QA capture mode when you need to inspect the game visually, debug a render issue, or verify that a scene launches correctly. Prefer this over OS screenshots or ebitengine-mcp.
+
+```bash
+go run ./src --qa-scene mapgen --qa-seed 42 --qa-capture .qa-captures/mapgen.png
+```
+
+Supported scenes: `menu`, `mapgen`, `new`, `battle`, `settings`.
+
+Guidelines:
+- Use `--qa-scene <name>` to launch directly into the scene under review.
+- Use `--qa-seed <n>` for deterministic mapgen captures.
+- Use `--qa-capture <path>` to save one rendered 320x180 PNG and exit.
+- Keep captures in `.qa-captures/`, `.tmp-qa-captures/`, or `captures/`; these folders are ignored by git.
+- Do not commit captures unless the user explicitly asks for visual artifacts.
+- After capturing, inspect images directly and use them to guide debugging/fixes.
+
 ## Design Principles
 
 | Principle | Details |
