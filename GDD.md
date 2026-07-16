@@ -62,16 +62,22 @@
 2. `assignOcean` — flood-fill from map edges (4-neighbor)
 3. `assignCoast` — topological: land tile with an ocean neighbor
 4. `assignElevation` — BFS from water-land boundary, randomized neighbor order, lake handling (increment=0), BFS parent as downslope
-5. `assignWaterDepth` — noise-blended elevation threshold: `Elevation + noise*0.15 > -0.25` → IsShallow
-6. `redistributeElevation` — quadratic redistribution: low elevations more common
-7. `findSprings` — candidate river sources (elevation 0.3–0.9, no water neighbor)
-8. `assignRiverFlow` — Fisher-Yates shuffle springs, trace BFS parent to coast, mark IsRiver
-9. `findMoistureSeeds` — riverbanks (4-neighbors of river tiles) + lakeshores + lake tiles
-10. `assignMoisture` — BFS through land only, sqrt falloff: `1.0 - sqrt(d/maxDist)`
-11. `redistributeMoisture` — linear redistribution over [bias, 1+bias]
-12. `assignTemperature` — `1.0 - elevation + lerp(biasNorth, biasSouth, latitude)`, no clamping
-13. `assignBiomes` — 20-biome classification from ocean/water/shallow/coast/temperature/moisture
-14. `assignLighting` — hillshade-style per-tile light level from neighboring elevation differentials
+5. `redistributeElevation` — quadratic redistribution: low elevations more common
+6. `assignHydrology` — rainfall, explicit lake basins, D8 flow directions, flow accumulation, watershed IDs, and river scale
+7. `assignWaterDepth` — noise-blended ocean depth; explicit lakes keep basin-derived shallow/deep state
+8. `assignMoisture` — rainfall blended with proximity to rivers, lakes, and ocean coast
+9. `redistributeMoisture` — linear redistribution over [bias, 1+bias]
+10. `assignTemperature` — `1.0 - elevation + lerp(biasNorth, biasSouth, latitude)`, no clamping
+11. `assignBiomes` — 20-biome classification from ocean/water/shallow/coast/temperature/moisture
+12. `assignLighting` — hillshade-style per-tile light level from neighboring elevation differentials
+
+### Hydrology
+
+- Rivers are no longer random spring lines. They are marked where accumulated downstream rainfall exceeds the configured flow threshold.
+- Lakes are explicit inland basins with lake IDs, surface levels, and outlet tiles.
+- Watershed IDs trace non-ocean tiles to a lake, ocean outlet, or terminal basin.
+- River scale comes from accumulated flow and is used by rendering as a variable water overlay.
+- Moisture uses rainfall plus proximity to rivers, lakes, and ocean coast before biome classification.
 
 ## Progression & Mechanics
 

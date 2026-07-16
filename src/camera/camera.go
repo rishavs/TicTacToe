@@ -16,7 +16,7 @@ func New(tileSize float64) *Camera {
 		X:        0,
 		Y:        0,
 		Zoom:     1.0,
-		MinZoom:  0.05,
+		MinZoom:  0.02,
 		MaxZoom:  16.0,
 		TileSize: tileSize,
 	}

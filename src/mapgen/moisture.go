@@ -23,6 +23,14 @@ func findMoistureSeeds(m *GameMap) []int {
 				seedSet[nidx] = true
 			})
 		}
+
+		if t.IsOcean {
+			m.EachN4(i, func(nidx int, _ int) {
+				if !m.Tiles[nidx].IsWater {
+					seedSet[nidx] = true
+				}
+			})
+		}
 	}
 
 	seeds := make([]int, 0, len(seedSet))
@@ -32,7 +40,8 @@ func findMoistureSeeds(m *GameMap) []int {
 	return seeds
 }
 
-func assignMoisture(m *GameMap, seeds []int) {
+func assignMoisture(m *GameMap, _ MapConfig) {
+	seeds := findMoistureSeeds(m)
 	dist := make([]int, len(m.Tiles))
 	for i := range dist {
 		dist[i] = -1
@@ -84,15 +93,20 @@ func assignMoisture(m *GameMap, seeds []int) {
 	}
 
 	for i := range m.Tiles {
-		if m.Tiles[i].IsWater {
+		t := &m.Tiles[i]
+		if t.IsWater {
 			continue
 		}
 		d := dist[i]
-		if d < 0 {
-			m.Tiles[i].Moisture = 0
-			continue
+		proximity := 0.0
+		if d >= 0 {
+			proximity = 1.0 - math.Pow(float64(d)/float64(maxDist), 0.5)
 		}
-		m.Tiles[i].Moisture = 1.0 - math.Pow(float64(d)/float64(maxDist), 0.5)
+		elevMoisture := 1.0 - math.Max(0, t.Elevation)
+		t.Moisture = clamp(0.50*t.Rainfall+0.40*proximity+0.10*elevMoisture, 0, 1)
+		if t.IsRiver && t.Moisture < 0.9 {
+			t.Moisture = 0.9
+		}
 	}
 }
 

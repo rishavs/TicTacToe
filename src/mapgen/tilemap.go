@@ -28,10 +28,16 @@ const (
 type Tile struct {
 	Elevation   float64
 	Moisture    float64
+	Rainfall    float64
+	Flow        float64
+	RiverScale  float64
 	Temperature float64
 	Light       float64
 	Biome       BiomeType
 	Downslope   int
+	FlowDir     int
+	WatershedID int
+	LakeID      int
 	IsWater     bool
 	IsOcean     bool
 	IsCoast     bool
@@ -39,11 +45,29 @@ type Tile struct {
 	IsRiver     bool
 }
 
+type Lake struct {
+	ID           int
+	TileCount    int
+	SurfaceLevel float64
+	Outlet       int
+	Flow         float64
+}
+
+type Watershed struct {
+	ID     int
+	Outlet int
+	LakeID int
+	Area   int
+	Flow   float64
+}
+
 type GameMap struct {
-	Width  int
-	Height int
-	Tiles  []Tile
-	Seed   int64
+	Width      int
+	Height     int
+	Tiles      []Tile
+	Seed       int64
+	Lakes      []Lake
+	Watersheds []Watershed
 }
 
 type MapConfig struct {
@@ -53,9 +77,15 @@ type MapConfig struct {
 	IslandRoundness float64
 	IslandInflate   float64
 	NoiseAmplitudes []float64
-	NumRivers       int
-	MinSpringElev   float64
-	MaxSpringElev   float64
+	MaxLakes        int
+	MinLakeArea     int
+	MaxLakeArea     int
+	LakeDepth       float64
+	LakeSpacing     int
+	RainfallScale   float64
+	RainfallAmp     float64
+	RiverThreshold  float64
+	RiverMaxScale   float64
 	MoistureBias    float64
 	NorthTempBias   float64
 	SouthTempBias   float64
@@ -76,16 +106,22 @@ func DefaultConfig() MapConfig {
 		IslandRoundness: 0.5,
 		IslandInflate:   0.4,
 		NoiseAmplitudes: []float64{0.5, 0.25, 0.125, 0.0625},
-		NumRivers:       30,
-		MinSpringElev:   0.3,
-		MaxSpringElev:   0.9,
+		MaxLakes:        8,
+		MinLakeArea:     8,
+		MaxLakeArea:     90,
+		LakeDepth:       0.08,
+		LakeSpacing:     18,
+		RainfallScale:   3.5,
+		RainfallAmp:     0.45,
+		RiverThreshold:  90,
+		RiverMaxScale:   3,
 		MoistureBias:    0.0,
 		NorthTempBias:   0.0,
 		SouthTempBias:   0.0,
 		WaterDepthScale: 200,
 		WaterDepthAmp:   0.15,
 		WaterDepthLimit: -0.25,
-		LightAmbient:    0.5,
+		LightAmbient:    0.65,
 		LightSlopeScale: 2.0,
 		LightMin:        0.2,
 		LightMax:        1.0,
@@ -93,12 +129,19 @@ func DefaultConfig() MapConfig {
 }
 
 func NewGameMap(cfg MapConfig) *GameMap {
-	return &GameMap{
+	m := &GameMap{
 		Width:  cfg.Width,
 		Height: cfg.Height,
 		Tiles:  make([]Tile, cfg.Width*cfg.Height),
 		Seed:   cfg.Seed,
 	}
+	for i := range m.Tiles {
+		m.Tiles[i].Downslope = -1
+		m.Tiles[i].FlowDir = -1
+		m.Tiles[i].WatershedID = -1
+		m.Tiles[i].LakeID = -1
+	}
+	return m
 }
 
 func (m *GameMap) Index(x, y int) int {
@@ -143,11 +186,33 @@ var N4Offsets = [4][2]int{
 	{0, -1}, // 3: N
 }
 
+var D8Offsets = [8][2]int{
+	{1, 0},   // 0: E
+	{1, 1},   // 1: SE
+	{0, 1},   // 2: S
+	{-1, 1},  // 3: SW
+	{-1, 0},  // 4: W
+	{-1, -1}, // 5: NW
+	{0, -1},  // 6: N
+	{1, -1},  // 7: NE
+}
+
 func N4Neighbor(idx, w, h int, dir int) (int, bool) {
 	x := idx % w
 	y := idx / w
 	nx := x + N4Offsets[dir][0]
 	ny := y + N4Offsets[dir][1]
+	if nx < 0 || nx >= w || ny < 0 || ny >= h {
+		return 0, false
+	}
+	return ny*w + nx, true
+}
+
+func D8Neighbor(idx, w, h int, dir int) (int, bool) {
+	x := idx % w
+	y := idx / w
+	nx := x + D8Offsets[dir][0]
+	ny := y + D8Offsets[dir][1]
 	if nx < 0 || nx >= w || ny < 0 || ny >= h {
 		return 0, false
 	}

@@ -17,19 +17,13 @@ func Generate(cfg MapConfig) *GameMap {
 
 	assignElevation(m, rng)
 
-	assignWaterDepth(m, cfg)
-
 	redistributeElevation(m)
 
-	springs := findSprings(m, cfg)
-	randomShuffle(springs, rng)
-	if cfg.NumRivers < len(springs) {
-		springs = springs[:cfg.NumRivers]
-	}
-	assignRiverFlow(m, springs)
+	assignHydrology(m, cfg)
 
-	moistureSeeds := findMoistureSeeds(m)
-	assignMoisture(m, moistureSeeds)
+	assignWaterDepth(m, cfg)
+
+	assignMoisture(m, cfg)
 	redistributeMoisture(m, cfg.MoistureBias, 1+cfg.MoistureBias)
 
 	assignTemperature(m, cfg.NorthTempBias, cfg.SouthTempBias)

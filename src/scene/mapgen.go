@@ -18,9 +18,9 @@ import (
 
 var biomeColors = map[mapgen.BiomeType]color.RGBA{
 	mapgen.BiomeDeepOcean:                {0x0d, 0x1f, 0x3a, 0xff},
-	mapgen.BiomeShallowOcean:             {0x1a, 0x3a, 0x5c, 0xff},
-	mapgen.BiomeDeepLake:                 {0x1a, 0x4a, 0x5c, 0xff},
-	mapgen.BiomeShallowLake:              {0x2a, 0x6a, 0x8c, 0xff},
+	mapgen.BiomeShallowOcean:             {0x16, 0x37, 0x56, 0xff},
+	mapgen.BiomeDeepLake:                 {0x13, 0x34, 0x49, 0xff},
+	mapgen.BiomeShallowLake:              {0x1c, 0x4d, 0x66, 0xff},
 	mapgen.BiomeMarsh:                    {0x3a, 0x7a, 0x5a, 0xff},
 	mapgen.BiomeIce:                      {0xdd, 0xee, 0xff, 0xff},
 	mapgen.BiomeBeach:                    {0xc2, 0xb2, 0x80, 0xff},
@@ -45,8 +45,8 @@ const (
 	zoomSpeed   = 1.1
 	panelWidth  = 50
 	mapAreaW    = InternalWidth - panelWidth
-	mapgenSizeW = 200
-	mapgenSizeH = 200
+	mapgenSizeW = 512
+	mapgenSizeH = 512
 	regenDelay  = 8
 )
 
@@ -62,8 +62,6 @@ type MapgenScene struct {
 	sTempSlider    *widget.Slider
 	roundSlider    *widget.Slider
 
-	biomesOn     bool
-	lightingOn   bool
 	regenQueued  bool
 	regenCounter int
 }
@@ -74,7 +72,7 @@ func NewMapgenScene() *MapgenScene {
 
 func NewMapgenSceneWithSeed(seed int64) *MapgenScene {
 	loadTheme()
-	s := &MapgenScene{biomesOn: true, lightingOn: true, seed: seed}
+	s := &MapgenScene{seed: seed}
 	s.cam = camera.New(tileSize)
 	s.ui = buildPanel(s)
 	s.regenerate(s.seed)
@@ -95,17 +93,6 @@ func buildPanel(s *MapgenScene) *ebitenui.UI {
 			s.regenerate(rand.Int64())
 		}),
 	)
-
-	uncheckedImg := ebiten.NewImage(6, 6)
-	uncheckedImg.Fill(color.NRGBA{0x88, 0x88, 0xaa, 0xff})
-	checkedImg := ebiten.NewImage(6, 6)
-	checkedImg.Fill(color.NRGBA{0x66, 0xaa, 0xff, 0xff})
-	chkImg := &widget.CheckboxImage{
-		Unchecked:        image.NewFixedNineSlice(uncheckedImg),
-		Checked:          image.NewFixedNineSlice(checkedImg),
-		UncheckedHovered: image.NewFixedNineSlice(uncheckedImg),
-		CheckedHovered:   image.NewFixedNineSlice(checkedImg),
-	}
 
 	trackImg := &widget.SliderTrackImage{
 		Idle: image.NewBorderedNineSliceColor(
@@ -165,26 +152,6 @@ func buildPanel(s *MapgenScene) *ebitenui.UI {
 	))
 	s.roundSlider = widget.NewSlider(sliderOpts(0, 100, 50, s.scheduleRegenerate)...)
 	content.AddChild(s.roundSlider)
-
-	content.AddChild(widget.NewLabel(
-		widget.LabelOpts.LabelText("Render"),
-	))
-	content.AddChild(widget.NewCheckbox(
-		widget.CheckboxOpts.Image(chkImg),
-		widget.CheckboxOpts.TextLabel("Biomes"),
-		widget.CheckboxOpts.InitialState(widget.WidgetChecked),
-		widget.CheckboxOpts.StateChangedHandler(func(args *widget.CheckboxChangedEventArgs) {
-			s.biomesOn = args.State == widget.WidgetChecked
-		}),
-	))
-	content.AddChild(widget.NewCheckbox(
-		widget.CheckboxOpts.Image(chkImg),
-		widget.CheckboxOpts.TextLabel("Light"),
-		widget.CheckboxOpts.InitialState(widget.WidgetChecked),
-		widget.CheckboxOpts.StateChangedHandler(func(args *widget.CheckboxChangedEventArgs) {
-			s.lightingOn = args.State == widget.WidgetChecked
-		}),
-	))
 
 	scImg := &widget.ScrollContainerImage{
 		Idle: image.NewNineSliceColor(color.NRGBA{0x1a, 0x1a, 0x2e, 0xff}),
@@ -369,7 +336,6 @@ func (s *MapgenScene) drawMap(screen *ebiten.Image) {
 	maxX := min(s.m.Width, vp.MaxX)
 	maxY := min(s.m.Height, vp.MaxY)
 
-	riverColor := color.RGBA{0x44, 0x88, 0xcc, 0xff}
 	zoom := s.cam.Zoom
 
 	for y := minY; y < maxY; y++ {
@@ -386,30 +352,30 @@ func (s *MapgenScene) drawMap(screen *ebiten.Image) {
 			vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), s.tileColor(t), false)
 
 			if t.IsRiver {
-				vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), riverColor, false)
+				riverSize := sz * (0.55 + 0.18*t.RiverScale)
+				if riverSize > sz*1.2 {
+					riverSize = sz * 1.2
+				}
+				offset := (sz - riverSize) / 2
+				vector.DrawFilledRect(screen, float32(sx+offset), float32(sy+offset), float32(riverSize), float32(riverSize), riverColor(t), false)
 			}
 		}
 	}
 }
 
+func riverColor(t *mapgen.Tile) color.RGBA {
+	scale := min(t.RiverScale, 3)
+	return color.RGBA{
+		R: uint8(0x18 + scale*4),
+		G: uint8(0x55 + scale*8),
+		B: uint8(0x72 + scale*10),
+		A: 0xff,
+	}
+}
+
 func (s *MapgenScene) tileColor(t *mapgen.Tile) color.RGBA {
-	var clr color.RGBA
-	if s.biomesOn {
-		c := biomeColors[t.Biome]
-		clr = color.RGBA{c.R, c.G, c.B, 0xff}
-	} else {
-		e := t.Elevation
-		if e < 0 {
-			e = 0
-		}
-		v := uint8(e * 255)
-		clr = color.RGBA{v, v, v, 0xff}
-	}
-
-	if !s.lightingOn {
-		return clr
-	}
-
+	c := biomeColors[t.Biome]
+	clr := color.RGBA{c.R, c.G, c.B, 0xff}
 	l := t.Light
 	return color.RGBA{
 		uint8(float64(clr.R) * l),

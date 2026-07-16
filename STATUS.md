@@ -33,20 +33,22 @@
 - [x] **002 — Main menu & scene system** — Scene manager, 5-button main menu (ebitenui), placeholder scenes with back button
 - [x] **003 — Square-grid procedural map generator** — GameMap types, island noise, water/ocean/lake, BFS elevation, D8 flow accumulation rivers (width), moisture, temperature, biomes, camera/viewport
 - [x] **004 — Close-port mapgen2 terrain pipeline** — Current code reconciled and spec closed. Island formula (Chebyshev+noise→water), topological coast, lake elevation handling, BFS-derived downslope, N-spring rivers, sqrt moisture falloff + redistribution, 1.0-elevation temperature, 20-biome classification, BFS randomization, lighting data
-- [x] **005 — Wire noisy edges, fills, and lighting** — Closed as a design decision. Lighting and Biomes toggles remain; Edges/Fills were tried, gave no meaningful benefit, and are intentionally not planned.
+- [x] **005 — Wire noisy edges, fills, and lighting** — Closed as a design decision. Lighting and biome rendering remain; Edges/Fills were tried, gave no meaningful benefit, and are intentionally not planned.
 - [x] **006 — Cleanup mapgen and viewer technical debt** — Removed dead river-width/noisy-edge paths, centralized resolution constants, moved active tuning values into MapConfig, reused noise generators, and split map viewer helpers
 - [x] **007 — Dev screenshot capture and direct scene launch** — Added QA flags for direct scene launch, deterministic mapgen seed, and one-frame PNG capture
+- [x] **008 — Watershed hydrology for rivers and lakes** — Replaced random spring-line rivers with rainfall, explicit lakes, D8 flow directions, watersheds, flow accumulation, variable river scale, and hydrology-based moisture
+- [x] **009 — Always-on map viewer biomes and lighting** — Removed Biomes/Light controls; mapgen viewer always renders biome colors with lighting
 
 ## Map Generator
 - [x] `src/mapgen/` package (10 files)
-- [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, Light, IsShallow; no FlowDir/FlowAccum), MapConfig (no ElevThreshold/RiverThreshold, +NumRivers), 20 BiomeType enum, N4 helpers
+- [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, FlowDir, Flow, Rainfall, RiverScale, WatershedID, LakeID, Light, IsShallow), MapConfig hydrology tunables, 20 BiomeType enum, N4/D8 helpers
 - [x] `src/mapgen/island.go` — `assignIslandWater`: FBM noise + Chebyshev distance, lerp(noise,0.5,round) - (1-inflate)*dist² < 0
 - [x] `src/mapgen/water.go` — `assignOcean` (flood-fill from edges), `assignCoast` (topological: land tile adjacent to ocean)
 - [x] `src/mapgen/elevation.go` — BFS from water/land boundary, lake handling (increment=0), randomized neighbor order, BFS parent as downslope, quadratic redistribution
-- [x] `src/mapgen/rivers.go` — `findSprings` (configurable elevation range, non-water), Fisher-Yates shuffle, `assignRiverFlow` (trace BFS parent to coast)
-- [x] `src/mapgen/moisture.go` — `findMoistureSeeds` (riverbanks + lakeshores + lakes), BFS through land only, sqrt falloff, linear redistribution over [bias,1+bias]
+- [x] `src/mapgen/hydrology.go` — rainfall, explicit lake basins/outlets, D8 flow directions, flow accumulation, watershed IDs, flow-threshold rivers
+- [x] `src/mapgen/moisture.go` — rainfall + river/lake/coast proximity moisture, linear redistribution over [bias,1+bias]
 - [x] `src/mapgen/biomes.go` — `assignTemperature` (1.0 - elevation + lerp(biasN,biasS,lat)), `assignBiomes` (20-biome mapgen2-style thresholds)
-- [x] `src/mapgen/generator.go` — current pipeline: islandWater→ocean→coast→elevation→waterDepth→redistribute→springs→riverFlow→moistureSeeds→moisture→redistribute→temperature→biomes→lighting
+- [x] `src/mapgen/generator.go` — current pipeline: islandWater→ocean→coast→elevation→redistribute→hydrology→waterDepth→moisture→redistribute→temperature→biomes→lighting
 - [x] `src/mapgen/tmx.go` — TMX type stubs
 - [x] `github.com/ojrac/opensimplex-go` dependency
 
@@ -54,13 +56,15 @@
 - [x] `src/camera/camera.go` — Camera struct with pan, zoom, viewport calc
 
 ## Map Viewer Scene
-- [x] `src/scene/mapgen.go` — MapgenScene: generates 200×200 map, renders biome-colored tiles
+- [x] `src/scene/mapgen.go` — MapgenScene: generates 512×512 map, renders biome-colored tiles
 - [x] Camera integration: arrow/WASD pan, scroll/keys zoom
 - [x] Back button returns to main menu
 - [x] Mapgen button in main menu wired to MapgenScene
-- [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth) and checkboxes (Biomes, Light)
+- [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth); Biomes and Light are always on with no controls
 - [x] Edges/Fills viewer modes intentionally dropped after experiment (`005`)
-- [x] Regenerate button, F-key fit, zoom range 0.05×–16×
+- [x] Rivers render as coherent variable-scale water overlays instead of fixed bright debug lines
+- [x] Default map lighting ambient raised to 0.65 for brighter lit terrain
+- [x] Regenerate button, F-key fit, zoom range 0.02×–16×
 - [x] QA capture mode: `--qa-scene`, `--qa-seed`, `--qa-capture`
 
 ## Theme / UI Polish
@@ -79,4 +83,4 @@
 - [x] Font stays at crisp 8px Press Start 2P (6px was blurry)
 
 ## Active / Next Up
-- (none — active specs complete)
+- Tune watershed/lake generation by visual QA across more seeds after playtesting

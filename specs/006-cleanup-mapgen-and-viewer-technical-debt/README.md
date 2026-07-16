@@ -52,7 +52,7 @@ Complete.
 ## Design Notes
 
 - Edges/Fills remain intentionally dropped; no rendering mode was reintroduced.
-- The cleanup preserves the existing visible viewer controls: Biomes and Light.
+- Spec 009 later removed the Biomes and Light controls; both render effects are now always on.
 - Mapgen remains independent from Ebiten rendering.
 
 ## Verification

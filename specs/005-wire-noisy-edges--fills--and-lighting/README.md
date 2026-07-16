@@ -24,17 +24,15 @@ Complete as a closed decision. Lighting is wired into the map viewer. Edges and 
 - `Tile` has `Light float64`.
 - `src/mapgen/lighting.go` computes land light from neighboring elevation differentials and clamps through configurable `MapConfig` values.
 - `Generate()` calls `assignLighting(m, cfg)`.
-- `MapgenScene` has `lightingOn` state.
-- The map viewer exposes a `Light` checkbox.
-- `Draw()` multiplies biome/elevation color by `tile.Light` when lighting is enabled.
+- `MapgenScene` always applies lighting during tile rendering.
+- The old `Light` checkbox was removed in spec 009 because lighting is always desired.
+- `Draw()` multiplies biome color by `tile.Light`.
 
-### Current Render Controls
+### Current Render State
 
-- `MapgenScene` has `biomesOn` state.
-- The map viewer exposes a `Biomes` checkbox.
-- With Biomes enabled, tiles render with the biome palette.
-- With Biomes disabled, tiles render as grayscale elevation.
-- The viewer exposes a `Light` checkbox.
+- Tiles always render with the biome palette.
+- Lighting is always applied.
+- The old Biomes and Light checkboxes were removed in spec 009.
 
 ## Explicitly Dropped
 
@@ -53,6 +51,6 @@ Complete as a closed decision. Lighting is wired into the map viewer. Edges and 
 
 ## Verification
 
-- Current code matches the final scope: Biomes and Light controls remain; Edges and Fills controls are absent.
+- Current code matches the final scope: biome rendering and lighting remain always on; Edges, Fills, Biomes, and Light render toggles are absent.
 - `go test ./...` passes.
 - `go vet ./...` passes.

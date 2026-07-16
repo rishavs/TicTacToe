@@ -65,6 +65,9 @@ func assignWaterDepth(m *GameMap, cfg MapConfig) {
 		if !t.IsWater {
 			continue
 		}
+		if !t.IsOcean {
+			continue
+		}
 		x := float64(i % m.Width)
 		y := float64(i / m.Width)
 		n := noise.Eval2(x/w*cfg.WaterDepthScale, y/h*cfg.WaterDepthScale) * cfg.WaterDepthAmp
