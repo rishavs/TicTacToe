@@ -1,0 +1,77 @@
+# Stoneheart — Status
+
+> Running checklist of completed work and pending todos. Keep updated after every meaningful change.
+
+## Project Setup
+- [x] Go module initialized (`go.mod` with Ebiten v2.9.9)
+- [x] Boilerplate Ebiten game in `src/main.go` ("Hello, World!")
+- [x] `assets/` directory created (empty)
+- [x] LeanSpec MCP connection verified
+- [x] Specs directory structure (`specs/`) with README
+- [x] Added `golang.org/x/image` dependency for text rendering
+
+## Scene / Menu System
+- [x] `src/scene/` package created with `Scene` interface
+- [x] Scene `Manager` for switching between scenes
+- [x] **ebitenui** dependency added (`github.com/ebitenui/ebitenui v0.7.3`)
+- [x] `src/scene/resources.go` — shared theme (button images, font faces)
+- [x] Main menu with 5 buttons using ebitenui widgets (New, Mapgen, Battle, Settings, Quit)
+- [x] Placeholder scenes for each menu option with Back button (ebitenui)
+- [x] `src/main.go` updated to use scene manager
+- [x] Removed manual `vector` rendering, `basicfont`, `inpututil`
+
+## Documentation
+- [x] `AGENTS.md` — project instructions & standards
+- [x] `ARCH.md` — architecture document, package structure, data flow
+- [x] `GDD.md` — stub created (TBD)
+- [x] `CONV.md` — conversation log started
+- [x] `STATUS.md` — this file
+
+## Completed Specs
+- [x] **001 — ebitengine-mcp integration** — Attempted, hit Windows bugs, reverted & archived
+- [x] **002 — Main menu & scene system** — Scene manager, 5-button main menu (ebitenui), placeholder scenes with back button
+- [x] **003 — Square-grid procedural map generator** — GameMap types, island noise, water/ocean/lake, BFS elevation, D8 flow accumulation rivers (width), moisture, temperature, biomes, camera/viewport
+- [x] **004 — Close-port mapgen2 terrain pipeline** — Full rewrite of all 9 mapgen files + new noisyedges.go. Island formula (Chebyshev+noise→water), topological coast, lake elevation handling, BFS-derived downslope, N-spring rivers, sqrt moisture falloff + redistribution, 1.0-elevation temperature, 18-biome classification, BFS randomization, noisy edges data
+
+## Map Generator
+- [x] `src/mapgen/` package (10 files)
+- [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, no FlowDir/FlowAccum), MapConfig (no ElevThreshold/RiverThreshold, +NumRivers), 18 BiomeType enum, N4 helpers
+- [x] `src/mapgen/island.go` — `assignIslandWater`: FBM noise + Chebyshev distance, lerp(noise,0.5,round) - (1-inflate)*dist² < 0
+- [x] `src/mapgen/water.go` — `assignOcean` (flood-fill from edges), `assignCoast` (topological: land tile adjacent to ocean)
+- [x] `src/mapgen/elevation.go` — BFS from water/land boundary, lake handling (increment=0), randomized neighbor order, BFS parent as downslope, quadratic redistribution
+- [x] `src/mapgen/rivers.go` — `findSprings` (elev 0.3-0.9, non-water), Fisher-Yates shuffle, `assignRiverFlow` (trace BFS parent to coast), `widenRivers` (perpendicular spread)
+- [x] `src/mapgen/moisture.go` — `findMoistureSeeds` (riverbanks + lakeshores + lakes), BFS through land only, sqrt falloff, linear redistribution over [bias,1+bias]
+- [x] `src/mapgen/biomes.go` — `assignTemperature` (1.0 - elevation + lerp(biasN,biasS,lat)), `assignBiomes` (18-biome mapgen2 thresholds)
+- [x] `src/mapgen/generator.go` — new pipeline: islandWater→ocean→coast→elevation→redistribute→springs→riverFlow→widen→moistureSeeds→moisture→redistribute→temperature→biomes
+- [x] `src/mapgen/noisyedges.go` — recursive midpoint subdivision for coast edges (data only, rendering deferred)
+- [x] `src/mapgen/tmx.go` — TMX type stubs
+- [x] `github.com/ojrac/opensimplex-go` dependency
+
+## Camera System
+- [x] `src/camera/camera.go` — Camera struct with pan, zoom, viewport calc
+
+## Map Viewer Scene
+- [x] `src/scene/mapgen.go` — MapgenScene: generates 200×200 map, renders biome-colored tiles
+- [x] Camera integration: arrow/WASD pan, scroll/keys zoom
+- [x] Back button returns to main menu
+- [x] Mapgen button in main menu wired to MapgenScene
+- [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth) and checkboxes (Edges, Fills, Biomes, Light)
+- [x] Regenerate button, F-key fit, zoom range 0.05×–16×
+
+## Theme / UI Polish
+- [x] Font swapped from goregular to Press Start 2P (pixel font, embedded via embed.FS)
+- [x] Resolution set to 320×180
+- [x] Built-in ebitenui dark theme (`themes.GetBasicDarkTheme()`) with Press Start 2P font override
+- [x] Standalone `ScrollContainer` with vertical scrollbar slider + mouse wheel wiring
+- [x] Compact 6×6 checkbox images for tight panel
+
+## Slider Fixes & Size Reduction
+- [x] Content sliders had `PreferredSize()` width=0 (horizontal) → invisible + unclickable
+- [x] Fixed with `RowLayoutData{Stretch: true}` + `MinSize(0, 16)` → functional sliders
+- [x] Panel width reduced 80 → 50px, checkboxes 10×10 → 6×6
+- [x] Slider height 16→8px, handle 10→6px; scrollbar 10→6px wide, handle 12→8px
+- [x] Button padding tightened via theme ({4,4,1,1}), grid spacing 1→0
+- [x] Font stays at crisp 8px Press Start 2P (6px was blurry)
+
+## Next Up
+- (none — active spec complete)
