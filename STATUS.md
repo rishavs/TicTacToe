@@ -39,6 +39,10 @@
 - [x] **008 — Watershed hydrology for rivers and lakes** — Replaced random spring-line rivers with rainfall, explicit lakes, D8 flow directions, watersheds, flow accumulation, variable river scale, and hydrology-based moisture
 - [x] **009 — Always-on map viewer biomes and lighting** — Removed Biomes/Light controls; mapgen viewer always renders biome colors with lighting
 
+- [x] **010 - Try 512x512 map viewer generation** - Mapgen viewer now generates 512x512 maps and supports fit-to-view with lower camera min zoom
+- [x] **011 - Connect river rendering between tiles** - Added flow-aware river connectors to avoid dotted broken lines
+- [x] **012 - River centerline rendering** - Moved river drawing to a dedicated overlay pass with downstream centerline strokes so rivers are continuous instead of chopped by later terrain tiles
+
 ## Map Generator
 - [x] `src/mapgen/` package (10 files)
 - [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, FlowDir, Flow, Rainfall, RiverScale, WatershedID, LakeID, Light, IsShallow), MapConfig hydrology tunables, 20 BiomeType enum, N4/D8 helpers
@@ -63,6 +67,7 @@
 - [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth); Biomes and Light are always on with no controls
 - [x] Edges/Fills viewer modes intentionally dropped after experiment (`005`)
 - [x] Rivers render as coherent variable-scale water overlays instead of fixed bright debug lines
+- [x] River rendering runs as a second overlay pass and draws downstream centerline strokes so terrain tiles cannot cut rivers into dots or segments
 - [x] Default map lighting ambient raised to 0.65 for brighter lit terrain
 - [x] Regenerate button, F-key fit, zoom range 0.02×–16×
 - [x] QA capture mode: `--qa-scene`, `--qa-seed`, `--qa-capture`

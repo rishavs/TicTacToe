@@ -350,17 +350,80 @@ func (s *MapgenScene) drawMap(screen *ebiten.Image) {
 			sz := tileSize * zoom
 
 			vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), s.tileColor(t), false)
-
-			if t.IsRiver {
-				riverSize := sz * (0.55 + 0.18*t.RiverScale)
-				if riverSize > sz*1.2 {
-					riverSize = sz * 1.2
-				}
-				offset := (sz - riverSize) / 2
-				vector.DrawFilledRect(screen, float32(sx+offset), float32(sy+offset), float32(riverSize), float32(riverSize), riverColor(t), false)
-			}
 		}
 	}
+
+	for y := minY; y < maxY; y++ {
+		for x := minX; x < maxX; x++ {
+			t := s.m.Tile(x, y)
+			sx, sy := s.cam.TileToScreen(x, y)
+
+			if sx >= float64(mapAreaW) {
+				continue
+			}
+
+			sz := tileSize * zoom
+			s.drawRiver(screen, x, y, sx, sy, sz, t)
+		}
+	}
+}
+
+func (s *MapgenScene) drawRiver(screen *ebiten.Image, x, y int, sx, sy, sz float64, t *mapgen.Tile) {
+	if !t.IsRiver {
+		return
+	}
+
+	clr := riverColor(t)
+	riverWidth := riverStrokeWidth(sz, t)
+	cx, cy := tileCenter(sx, sy, sz)
+
+	if tx, ty, ok := riverTarget(s.m, x, y, t); ok {
+		tsx, tsy := s.cam.TileToScreen(tx, ty)
+		tcx, tcy := tileCenter(tsx, tsy, sz)
+		vector.StrokeLine(screen, float32(cx), float32(cy), float32(tcx), float32(tcy), float32(riverWidth), clr, true)
+	}
+
+	vector.FillCircle(screen, float32(cx), float32(cy), float32(riverWidth/2), clr, true)
+}
+
+func downstreamNeighbor(idx int, t *mapgen.Tile, w, h int) int {
+	if t.FlowDir < 0 {
+		return -1
+	}
+	nidx, ok := mapgen.D8Neighbor(idx, w, h, t.FlowDir)
+	if !ok {
+		return -1
+	}
+	return nidx
+}
+
+func riverTarget(m *mapgen.GameMap, x, y int, t *mapgen.Tile) (int, int, bool) {
+	idx := m.Index(x, y)
+	nidx := downstreamNeighbor(idx, t, m.Width, m.Height)
+	if nidx < 0 {
+		return 0, 0, false
+	}
+	nt := &m.Tiles[nidx]
+	if !nt.IsRiver && !nt.IsWater {
+		return 0, 0, false
+	}
+	return nidx % m.Width, nidx / m.Width, true
+}
+
+func tileCenter(sx, sy, sz float64) (float64, float64) {
+	return sx + sz/2, sy + sz/2
+}
+
+func riverStrokeWidth(sz float64, t *mapgen.Tile) float64 {
+	scale := min(t.RiverScale, 3)
+	width := sz * (0.24 + 0.09*scale)
+	if width > sz*0.75 {
+		width = sz * 0.75
+	}
+	if width < 1 {
+		width = 1
+	}
+	return width
 }
 
 func riverColor(t *mapgen.Tile) color.RGBA {

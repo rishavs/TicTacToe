@@ -85,7 +85,7 @@ Map generation:
 
 ### Rendering Boundary
 
-`scene.MapgenScene` converts controls into `MapConfig`, calls `mapgen.Generate`, fits a camera over the generated grid, and renders visible tiles using always-on biome colors plus lighting. Rivers render as calmer variable-scale water overlays, sharing the lake/ocean palette instead of a bright debug color. Edges/Fills modes and noisy-edge generation were intentionally dropped after experimentation; Biomes and Light controls were also removed because both effects are always desired.
+`scene.MapgenScene` converts controls into `MapConfig`, calls `mapgen.Generate`, fits a camera over the generated grid, and renders visible tiles using always-on biome colors plus lighting. Rivers render as calmer variable-scale water overlays, sharing the lake/ocean palette instead of a bright debug color. Terrain is drawn first, then rivers render in a dedicated overlay pass as antialiased downstream centerline strokes, so neighboring terrain tiles cannot chop river strokes into disconnected dots or segments. Edges/Fills modes and noisy-edge generation were intentionally dropped after experimentation; Biomes and Light controls were also removed because both effects are always desired.
 
 ## QA Capture Harness
 
