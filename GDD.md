@@ -66,14 +66,13 @@
 6. `redistributeElevation` — quadratic redistribution: low elevations more common
 7. `findSprings` — candidate river sources (elevation 0.3–0.9, no water neighbor)
 8. `assignRiverFlow` — Fisher-Yates shuffle springs, trace BFS parent to coast, mark IsRiver
-9. `widenRivers` — perpendicular spread for wider river channels
-10. `findMoistureSeeds` — riverbanks (4-neighbors of river tiles) + lakeshores + lake tiles
-11. `assignMoisture` — BFS through land only, sqrt falloff: `1.0 - sqrt(d/maxDist)`
-12. `redistributeMoisture` — linear redistribution over [bias, 1+bias]
-13. `assignTemperature` — `1.0 - elevation + lerp(biasNorth, biasSouth, latitude)`, no clamping
-14. `assignBiomes` — 20-biome classification from ocean/water/shallow/coast/temperature/moisture
+9. `findMoistureSeeds` — riverbanks (4-neighbors of river tiles) + lakeshores + lake tiles
+10. `assignMoisture` — BFS through land only, sqrt falloff: `1.0 - sqrt(d/maxDist)`
+11. `redistributeMoisture` — linear redistribution over [bias, 1+bias]
+12. `assignTemperature` — `1.0 - elevation + lerp(biasNorth, biasSouth, latitude)`, no clamping
+13. `assignBiomes` — 20-biome classification from ocean/water/shallow/coast/temperature/moisture
+14. `assignLighting` — hillshade-style per-tile light level from neighboring elevation differentials
 
 ## Progression & Mechanics
 
 *TBD*
-

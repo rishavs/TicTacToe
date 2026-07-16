@@ -59,11 +59,3 @@ func (c *Camera) SetZoom(z float64) {
 	}
 	c.Zoom = z
 }
-
-func (c *Camera) ZoomAt(z float64, screenX, screenY int) {
-	worldX := float64(screenX)/c.Zoom + c.X
-	worldY := float64(screenY)/c.Zoom + c.Y
-	c.SetZoom(z)
-	c.X = worldX - float64(screenX)/c.Zoom
-	c.Y = worldY - float64(screenY)/c.Zoom
-}

@@ -17,38 +17,37 @@ import (
 )
 
 var biomeColors = map[mapgen.BiomeType]color.RGBA{
-	mapgen.BiomeDeepOcean:                  {0x0d, 0x1f, 0x3a, 0xff},
-	mapgen.BiomeShallowOcean:               {0x1a, 0x3a, 0x5c, 0xff},
-	mapgen.BiomeDeepLake:                   {0x1a, 0x4a, 0x5c, 0xff},
-	mapgen.BiomeShallowLake:                {0x2a, 0x6a, 0x8c, 0xff},
-	mapgen.BiomeMarsh:                     {0x3a, 0x7a, 0x5a, 0xff},
-	mapgen.BiomeIce:                       {0xdd, 0xee, 0xff, 0xff},
-	mapgen.BiomeBeach:                     {0xc2, 0xb2, 0x80, 0xff},
-	mapgen.BiomeSnow:                      {0xf0, 0xf0, 0xf0, 0xff},
-	mapgen.BiomeTundra:                    {0x8f, 0x9d, 0x9d, 0xff},
-	mapgen.BiomeBare:                      {0x9e, 0x8e, 0x7e, 0xff},
-	mapgen.BiomeScorched:                  {0xb8, 0x88, 0x60, 0xff},
-	mapgen.BiomeTaiga:                     {0x4a, 0x6e, 0x4a, 0xff},
-	mapgen.BiomeShrubland:                 {0x8b, 0xa3, 0x6c, 0xff},
-	mapgen.BiomeTemperateDesert:           {0xcc, 0xa8, 0x70, 0xff},
-	mapgen.BiomeTemperateRainForest:       {0x3d, 0x7a, 0x2d, 0xff},
-	mapgen.BiomeTemperateDeciduousForest:  {0x5a, 0x8e, 0x3a, 0xff},
-	mapgen.BiomeGrassland:                 {0x6b, 0x8e, 0x23, 0xff},
-	mapgen.BiomeTropicalRainForest:        {0x2d, 0x5a, 0x1e, 0xff},
-	mapgen.BiomeTropicalSeasonalForest:    {0x4a, 0x7a, 0x2e, 0xff},
-	mapgen.BiomeSubtropicalDesert:         {0xe0, 0xbc, 0x70, 0xff},
+	mapgen.BiomeDeepOcean:                {0x0d, 0x1f, 0x3a, 0xff},
+	mapgen.BiomeShallowOcean:             {0x1a, 0x3a, 0x5c, 0xff},
+	mapgen.BiomeDeepLake:                 {0x1a, 0x4a, 0x5c, 0xff},
+	mapgen.BiomeShallowLake:              {0x2a, 0x6a, 0x8c, 0xff},
+	mapgen.BiomeMarsh:                    {0x3a, 0x7a, 0x5a, 0xff},
+	mapgen.BiomeIce:                      {0xdd, 0xee, 0xff, 0xff},
+	mapgen.BiomeBeach:                    {0xc2, 0xb2, 0x80, 0xff},
+	mapgen.BiomeSnow:                     {0xf0, 0xf0, 0xf0, 0xff},
+	mapgen.BiomeTundra:                   {0x8f, 0x9d, 0x9d, 0xff},
+	mapgen.BiomeBare:                     {0x9e, 0x8e, 0x7e, 0xff},
+	mapgen.BiomeScorched:                 {0xb8, 0x88, 0x60, 0xff},
+	mapgen.BiomeTaiga:                    {0x4a, 0x6e, 0x4a, 0xff},
+	mapgen.BiomeShrubland:                {0x8b, 0xa3, 0x6c, 0xff},
+	mapgen.BiomeTemperateDesert:          {0xcc, 0xa8, 0x70, 0xff},
+	mapgen.BiomeTemperateRainForest:      {0x3d, 0x7a, 0x2d, 0xff},
+	mapgen.BiomeTemperateDeciduousForest: {0x5a, 0x8e, 0x3a, 0xff},
+	mapgen.BiomeGrassland:                {0x6b, 0x8e, 0x23, 0xff},
+	mapgen.BiomeTropicalRainForest:       {0x2d, 0x5a, 0x1e, 0xff},
+	mapgen.BiomeTropicalSeasonalForest:   {0x4a, 0x7a, 0x2e, 0xff},
+	mapgen.BiomeSubtropicalDesert:        {0xe0, 0xbc, 0x70, 0xff},
 }
 
 const (
 	tileSize    = 16
 	panSpeed    = 4
 	zoomSpeed   = 1.1
-	screenW     = 320
-	screenH     = 180
 	panelWidth  = 50
-	mapAreaW    = screenW - panelWidth
+	mapAreaW    = InternalWidth - panelWidth
 	mapgenSizeW = 200
 	mapgenSizeH = 200
+	regenDelay  = 8
 )
 
 type MapgenScene struct {
@@ -65,6 +64,8 @@ type MapgenScene struct {
 
 	biomesOn     bool
 	lightingOn   bool
+	regenQueued  bool
+	regenCounter int
 }
 
 func NewMapgenScene() *MapgenScene {
@@ -140,25 +141,25 @@ func buildPanel(s *MapgenScene) *ebitenui.UI {
 	content.AddChild(widget.NewLabel(
 		widget.LabelOpts.LabelText("Dry \n Wet"),
 	))
-	s.moistureSlider = widget.NewSlider(sliderOpts(-100, 100, 0, func() { s.regenerate(s.seed) })...)
+	s.moistureSlider = widget.NewSlider(sliderOpts(-100, 100, 0, s.scheduleRegenerate)...)
 	content.AddChild(s.moistureSlider)
 
 	content.AddChild(widget.NewLabel(
 		widget.LabelOpts.LabelText("N-Cold \n N-Hot"),
 	))
-	s.nTempSlider = widget.NewSlider(sliderOpts(-100, 100, 0, func() { s.regenerate(s.seed) })...)
+	s.nTempSlider = widget.NewSlider(sliderOpts(-100, 100, 0, s.scheduleRegenerate)...)
 	content.AddChild(s.nTempSlider)
 
 	content.AddChild(widget.NewLabel(
 		widget.LabelOpts.LabelText("S-Cold \n S-Hot"),
 	))
-	s.sTempSlider = widget.NewSlider(sliderOpts(-100, 100, 0, func() { s.regenerate(s.seed) })...)
+	s.sTempSlider = widget.NewSlider(sliderOpts(-100, 100, 0, s.scheduleRegenerate)...)
 	content.AddChild(s.sTempSlider)
 
 	content.AddChild(widget.NewLabel(
 		widget.LabelOpts.LabelText("Jagged \n Smooth"),
 	))
-	s.roundSlider = widget.NewSlider(sliderOpts(0, 100, 50, func() { s.regenerate(s.seed) })...)
+	s.roundSlider = widget.NewSlider(sliderOpts(0, 100, 50, s.scheduleRegenerate)...)
 	content.AddChild(s.roundSlider)
 
 	content.AddChild(widget.NewLabel(
@@ -242,7 +243,7 @@ func buildPanel(s *MapgenScene) *ebitenui.UI {
 				HorizontalPosition: widget.AnchorLayoutPositionEnd,
 				VerticalPosition:   widget.AnchorLayoutPositionStart,
 			}),
-			widget.WidgetOpts.MinSize(panelWidth, screenH),
+			widget.WidgetOpts.MinSize(panelWidth, InternalHeight),
 		),
 	)
 	panel.AddChild(backBtn)
@@ -258,6 +259,29 @@ func buildPanel(s *MapgenScene) *ebitenui.UI {
 
 func (s *MapgenScene) regenerate(seed int64) {
 	s.seed = seed
+	s.regenQueued = false
+	s.regenCounter = 0
+	s.m = mapgen.Generate(s.mapConfig(seed))
+	s.fitMap()
+}
+
+func (s *MapgenScene) scheduleRegenerate() {
+	s.regenQueued = true
+	s.regenCounter = regenDelay
+}
+
+func (s *MapgenScene) updateRegeneration() {
+	if !s.regenQueued {
+		return
+	}
+	if s.regenCounter > 0 {
+		s.regenCounter--
+		return
+	}
+	s.regenerate(s.seed)
+}
+
+func (s *MapgenScene) mapConfig(seed int64) mapgen.MapConfig {
 	cfg := mapgen.DefaultConfig()
 	cfg.Width = mapgenSizeW
 	cfg.Height = mapgenSizeH
@@ -266,19 +290,18 @@ func (s *MapgenScene) regenerate(seed int64) {
 	cfg.NorthTempBias = float64(s.nTempSlider.Current) / 100
 	cfg.SouthTempBias = float64(s.sTempSlider.Current) / 100
 	cfg.IslandRoundness = float64(s.roundSlider.Current) / 100
-	s.m = mapgen.Generate(cfg)
-	s.fitMap()
+	return cfg
 }
 
 func (s *MapgenScene) fitMap() {
 	zoomX := float64(mapAreaW) / (float64(s.m.Width) * tileSize)
-	zoomY := float64(screenH) / (float64(s.m.Height) * tileSize)
+	zoomY := float64(InternalHeight) / (float64(s.m.Height) * tileSize)
 	zoom := min(zoomX, zoomY)
 	s.cam.SetZoom(zoom)
 	totalW := float64(s.m.Width) * tileSize
 	totalH := float64(s.m.Height) * tileSize
 	s.cam.X = (totalW - float64(mapAreaW)/s.cam.Zoom) / 2
-	s.cam.Y = (totalH - float64(screenH)/s.cam.Zoom) / 2
+	s.cam.Y = (totalH - float64(InternalHeight)/s.cam.Zoom) / 2
 }
 
 func (s *MapgenScene) Update() (Scene, error) {
@@ -286,6 +309,13 @@ func (s *MapgenScene) Update() (Scene, error) {
 		return NewMenuScene(), nil
 	}
 
+	s.updateCamera()
+	s.ui.Update()
+	s.updateRegeneration()
+	return nil, nil
+}
+
+func (s *MapgenScene) updateCamera() {
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
 		s.cam.Move(-panSpeed/s.cam.Zoom, 0)
 	}
@@ -316,18 +346,19 @@ func (s *MapgenScene) Update() (Scene, error) {
 	if ebiten.IsKeyPressed(ebiten.KeyMinus) || ebiten.IsKeyPressed(ebiten.KeyNumpadSubtract) {
 		s.cam.SetZoom(s.cam.Zoom / zoomSpeed)
 	}
-
-	s.ui.Update()
-	return nil, nil
 }
 
 func (s *MapgenScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0x00, 0x00, 0x00, 0xff})
+	s.drawMap(screen)
+	s.ui.Draw(screen)
+}
 
+func (s *MapgenScene) drawMap(screen *ebiten.Image) {
 	mapBg := color.RGBA{0x11, 0x11, 0x22, 0xff}
-	vector.DrawFilledRect(screen, 0, 0, mapAreaW, screenH, mapBg, false)
+	vector.DrawFilledRect(screen, 0, 0, mapAreaW, InternalHeight, mapBg, false)
 
-	vp := s.cam.Viewport(mapAreaW, screenH)
+	vp := s.cam.Viewport(mapAreaW, InternalHeight)
 
 	minX := max(0, vp.MinX)
 	minY := max(0, vp.MinY)
@@ -348,36 +379,38 @@ func (s *MapgenScene) Draw(screen *ebiten.Image) {
 
 			sz := tileSize * zoom
 
-			var clr color.RGBA
-			if s.biomesOn {
-				c := biomeColors[t.Biome]
-				clr = color.RGBA{c.R, c.G, c.B, 0xff}
-			} else {
-				e := t.Elevation
-				if e < 0 {
-					e = 0
-				}
-				v := uint8(e * 255)
-				clr = color.RGBA{v, v, v, 0xff}
-			}
-
-			if s.lightingOn {
-				l := t.Light
-				clr = color.RGBA{
-					uint8(float64(clr.R) * l),
-					uint8(float64(clr.G) * l),
-					uint8(float64(clr.B) * l),
-					0xff,
-				}
-			}
-
-			vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), clr, false)
+			vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), s.tileColor(t), false)
 
 			if t.IsRiver {
 				vector.DrawFilledRect(screen, float32(sx), float32(sy), float32(sz), float32(sz), riverColor, false)
 			}
 		}
 	}
+}
 
-	s.ui.Draw(screen)
+func (s *MapgenScene) tileColor(t *mapgen.Tile) color.RGBA {
+	var clr color.RGBA
+	if s.biomesOn {
+		c := biomeColors[t.Biome]
+		clr = color.RGBA{c.R, c.G, c.B, 0xff}
+	} else {
+		e := t.Elevation
+		if e < 0 {
+			e = 0
+		}
+		v := uint8(e * 255)
+		clr = color.RGBA{v, v, v, 0xff}
+	}
+
+	if !s.lightingOn {
+		return clr
+	}
+
+	l := t.Light
+	return color.RGBA{
+		uint8(float64(clr.R) * l),
+		uint8(float64(clr.G) * l),
+		uint8(float64(clr.B) * l),
+		0xff,
+	}
 }

@@ -83,7 +83,7 @@ func (s *MenuScene) Draw(screen *ebiten.Image) {
 	title := "STONEHEART"
 	w, _ := text.Measure(title, titleFace, 0)
 	op := &text.DrawOptions{}
-	op.GeoM.Translate((320-w)/2, 40)
+	op.GeoM.Translate((InternalWidth-w)/2, 40)
 	op.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, title, titleFace, op)
 

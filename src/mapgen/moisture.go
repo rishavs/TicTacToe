@@ -12,22 +12,16 @@ func findMoistureSeeds(m *GameMap) []int {
 		t := &m.Tiles[i]
 
 		if t.IsRiver {
-			for dir := 0; dir < 4; dir++ {
-				nidx, ok := N4Neighbor(i, m.Width, m.Height, dir)
-				if ok {
-					seedSet[nidx] = true
-				}
-			}
+			m.EachN4(i, func(nidx int, _ int) {
+				seedSet[nidx] = true
+			})
 		}
 
 		if t.IsWater && !t.IsOcean {
 			seedSet[i] = true
-			for dir := 0; dir < 4; dir++ {
-				nidx, ok := N4Neighbor(i, m.Width, m.Height, dir)
-				if ok {
-					seedSet[nidx] = true
-				}
-			}
+			m.EachN4(i, func(nidx int, _ int) {
+				seedSet[nidx] = true
+			})
 		}
 	}
 

@@ -46,18 +46,17 @@ func assignCoast(m *GameMap) {
 		if t.IsWater {
 			return
 		}
-		for dir := 0; dir < 4; dir++ {
-			nidx, ok := N4Neighbor(m.Index(x, y), m.Width, m.Height, dir)
-			if ok && m.Tiles[nidx].IsOcean {
+		m.EachN4(m.Index(x, y), func(nidx int, _ int) {
+			if m.Tiles[nidx].IsOcean {
 				t.IsCoast = true
 				return
 			}
-		}
+		})
 	})
 }
 
-func assignWaterDepth(m *GameMap, seed int64) {
-	noise := opensimplex.New(seed + 99)
+func assignWaterDepth(m *GameMap, cfg MapConfig) {
+	noise := opensimplex.New(cfg.Seed + 99)
 	w := float64(m.Width)
 	h := float64(m.Height)
 
@@ -68,8 +67,8 @@ func assignWaterDepth(m *GameMap, seed int64) {
 		}
 		x := float64(i % m.Width)
 		y := float64(i / m.Width)
-		n := noise.Eval2(x/w*200, y/h*200) * 0.15
-		if t.Elevation+n > -0.25 {
+		n := noise.Eval2(x/w*cfg.WaterDepthScale, y/h*cfg.WaterDepthScale) * cfg.WaterDepthAmp
+		if t.Elevation+n > cfg.WaterDepthLimit {
 			t.IsShallow = true
 		}
 	}

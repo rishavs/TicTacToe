@@ -1,68 +1,58 @@
 ---
-status: draft
+status: complete
 created: 2026-07-15
 tags:
 - mapgen
 - rendering
 - ui
 created_at: 2026-07-15T18:24:35.746150700Z
-updated_at: 2026-07-15T18:24:39.380580500Z
+updated_at: 2026-07-16T03:54:49.567072800Z
 ---
+
 # Wire Noisy Edges, Fills, and Lighting
 
-Wire the 3 existing checkboxes (Edges, Fills, Light) on the map viewer panel to actual rendering effects.
+Reconcile the map viewer render-toggle work with the current code and design decision.
 
-## 1. Noisy Edges
+## Current Status
 
-**Data generation** — already exists in `noisyedges.go`. Wire into pipeline:
-- Call `assignNoisyEdges(m, rng)` from `Generate()`, store result on `GameMap.NoisyEdges`
-- `GameMap` gets new field `NoisyEdges *NoisyEdges`
+Complete as a closed decision. Lighting is wired into the map viewer. Edges and Fills viewer modes were tried earlier, did not provide enough benefit, and were removed from the active code path. Noisy-edge generation was also removed during cleanup because it was only supporting the dropped edge-rendering path.
 
-**Rendering** — when `noisyEdgesOn` checkbox is checked:
-- After drawing tile rects, draw noisy edge segments as thin lines at coast boundaries
-- Use `vector.StrokeLine` or `ebitenutil.DrawLine` with the subdivided point arrays
-- Line color: white or contrasting, 1px wide
+## Final Implemented State
 
-## 2. Fills
+### Lighting Data and Rendering
 
-**Current behavior:** tiles are always rendered with biome colors. Fills OFF means wireframe mode.
-- Fills ON (default): biome-colored filled rects (unchanged)
-- Fills OFF: neutral dark background, draw biome boundary lines only
-- Skip `vector.DrawFilledRect` for tile interiors when fills are off
+- `Tile` has `Light float64`.
+- `src/mapgen/lighting.go` computes land light from neighboring elevation differentials and clamps through configurable `MapConfig` values.
+- `Generate()` calls `assignLighting(m, cfg)`.
+- `MapgenScene` has `lightingOn` state.
+- The map viewer exposes a `Light` checkbox.
+- `Draw()` multiplies biome/elevation color by `tile.Light` when lighting is enabled.
 
-## 3. Lighting
+### Current Render Controls
 
-**Compute per-tile light level** from neighboring elevation differential:
-- New `assignLighting(m)` function in `lighting.go` (or `elevation.go`)
-- `Tile` gets new `Light float64` field
-- For each land tile, compute slope toward light source (northwest):
-  ```
-  dx = tile[x+1].Elevation - tile[x-1].Elevation
-  dy = tile[x-1].Elevation - tile[x+1].Elevation
-  light = 0.5 + (dx + dy) * 0.5  // range ~0-1
-  ```
-- Clamp to [0.2, 1.0] so shadows aren't pure black
+- `MapgenScene` has `biomesOn` state.
+- The map viewer exposes a `Biomes` checkbox.
+- With Biomes enabled, tiles render with the biome palette.
+- With Biomes disabled, tiles render as grayscale elevation.
+- The viewer exposes a `Light` checkbox.
 
-**Rendering** — when `lightingOn` checkbox is checked:
-- Multiply biome color RGB by `tile.Light` before drawing
-- Creates 3D hillshade effect
+## Explicitly Dropped
 
-## Files
+### Edges Toggle
 
-| File | Change |
-|------|--------|
-| `tilemap.go` | Add `Light float64` to Tile, `NoisyEdges *NoisyEdges` to GameMap |
-| `generator.go` | Add `assignNoisyEdges` + `assignLighting` calls |
-| `scene/mapgen.go` | Wire 3 checkbox fields to Draw logic |
-| `lighting.go` (new) | `assignLighting(m)` function |
+- Tried previously.
+- Did not provide enough visual or gameplay value.
+- Removed from code and no longer planned.
+- Supporting noisy-edge generation code was removed in spec 006.
 
-## Out of Scope
+### Fills Toggle
 
-- Advanced lighting (ambient occlusion, specular)
-- Noisy edge smoothing / anti-aliasing
-- Fills OFF outlines (rendered as simple thin lines over biome boundaries)
+- Tried previously.
+- Did not provide enough visual or gameplay value.
+- Removed from code and no longer planned.
 
 ## Verification
 
-- Build: `go build ./...`
-- Visual: checkboxes toggle rendering modes in real-time (no regeneration needed)
+- Current code matches the final scope: Biomes and Light controls remain; Edges and Fills controls are absent.
+- `go test ./...` passes.
+- `go vet ./...` passes.

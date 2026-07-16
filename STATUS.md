@@ -22,7 +22,7 @@
 
 ## Documentation
 - [x] `AGENTS.md` — project instructions & standards
-- [x] `ARCH.md` — architecture document, package structure, data flow
+- [x] `ARCH.md` — architecture document, package structure, data flow, mapgen logic/pipeline
 - [x] `GDD.md` — stub created (TBD)
 - [x] `CONV.md` — conversation log started
 - [x] `STATUS.md` — this file
@@ -31,19 +31,20 @@
 - [x] **001 — ebitengine-mcp integration** — Attempted, hit Windows bugs, reverted & archived
 - [x] **002 — Main menu & scene system** — Scene manager, 5-button main menu (ebitenui), placeholder scenes with back button
 - [x] **003 — Square-grid procedural map generator** — GameMap types, island noise, water/ocean/lake, BFS elevation, D8 flow accumulation rivers (width), moisture, temperature, biomes, camera/viewport
-- [x] **004 — Close-port mapgen2 terrain pipeline** — Full rewrite of all 9 mapgen files + new noisyedges.go. Island formula (Chebyshev+noise→water), topological coast, lake elevation handling, BFS-derived downslope, N-spring rivers, sqrt moisture falloff + redistribution, 1.0-elevation temperature, 18-biome classification, BFS randomization, noisy edges data
+- [x] **004 — Close-port mapgen2 terrain pipeline** — Current code reconciled and spec closed. Island formula (Chebyshev+noise→water), topological coast, lake elevation handling, BFS-derived downslope, N-spring rivers, sqrt moisture falloff + redistribution, 1.0-elevation temperature, 20-biome classification, BFS randomization, lighting data
+- [x] **005 — Wire noisy edges, fills, and lighting** — Closed as a design decision. Lighting and Biomes toggles remain; Edges/Fills were tried, gave no meaningful benefit, and are intentionally not planned.
+- [x] **006 — Cleanup mapgen and viewer technical debt** — Removed dead river-width/noisy-edge paths, centralized resolution constants, moved active tuning values into MapConfig, reused noise generators, and split map viewer helpers
 
 ## Map Generator
 - [x] `src/mapgen/` package (10 files)
-- [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, no FlowDir/FlowAccum), MapConfig (no ElevThreshold/RiverThreshold, +NumRivers), 18 BiomeType enum, N4 helpers
+- [x] `src/mapgen/tilemap.go` — GameMap, Tile (Downslope, Light, IsShallow; no FlowDir/FlowAccum), MapConfig (no ElevThreshold/RiverThreshold, +NumRivers), 20 BiomeType enum, N4 helpers
 - [x] `src/mapgen/island.go` — `assignIslandWater`: FBM noise + Chebyshev distance, lerp(noise,0.5,round) - (1-inflate)*dist² < 0
 - [x] `src/mapgen/water.go` — `assignOcean` (flood-fill from edges), `assignCoast` (topological: land tile adjacent to ocean)
 - [x] `src/mapgen/elevation.go` — BFS from water/land boundary, lake handling (increment=0), randomized neighbor order, BFS parent as downslope, quadratic redistribution
-- [x] `src/mapgen/rivers.go` — `findSprings` (elev 0.3-0.9, non-water), Fisher-Yates shuffle, `assignRiverFlow` (trace BFS parent to coast), `widenRivers` (perpendicular spread)
+- [x] `src/mapgen/rivers.go` — `findSprings` (configurable elevation range, non-water), Fisher-Yates shuffle, `assignRiverFlow` (trace BFS parent to coast)
 - [x] `src/mapgen/moisture.go` — `findMoistureSeeds` (riverbanks + lakeshores + lakes), BFS through land only, sqrt falloff, linear redistribution over [bias,1+bias]
-- [x] `src/mapgen/biomes.go` — `assignTemperature` (1.0 - elevation + lerp(biasN,biasS,lat)), `assignBiomes` (18-biome mapgen2 thresholds)
-- [x] `src/mapgen/generator.go` — new pipeline: islandWater→ocean→coast→elevation→redistribute→springs→riverFlow→widen→moistureSeeds→moisture→redistribute→temperature→biomes
-- [x] `src/mapgen/noisyedges.go` — recursive midpoint subdivision for coast edges (data only, rendering deferred)
+- [x] `src/mapgen/biomes.go` — `assignTemperature` (1.0 - elevation + lerp(biasN,biasS,lat)), `assignBiomes` (20-biome mapgen2-style thresholds)
+- [x] `src/mapgen/generator.go` — current pipeline: islandWater→ocean→coast→elevation→waterDepth→redistribute→springs→riverFlow→moistureSeeds→moisture→redistribute→temperature→biomes→lighting
 - [x] `src/mapgen/tmx.go` — TMX type stubs
 - [x] `github.com/ojrac/opensimplex-go` dependency
 
@@ -55,7 +56,8 @@
 - [x] Camera integration: arrow/WASD pan, scroll/keys zoom
 - [x] Back button returns to main menu
 - [x] Mapgen button in main menu wired to MapgenScene
-- [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth) and checkboxes (Edges, Fills, Biomes, Light)
+- [x] Right panel with sliders (Wet/Dry, N-Cold/Hot, S-Cold/Hot, Smooth) and checkboxes (Biomes, Light)
+- [x] Edges/Fills viewer modes intentionally dropped after experiment (`005`)
 - [x] Regenerate button, F-key fit, zoom range 0.05×–16×
 
 ## Theme / UI Polish
@@ -73,5 +75,5 @@
 - [x] Button padding tightened via theme ({4,4,1,1}), grid spacing 1→0
 - [x] Font stays at crisp 8px Press Start 2P (6px was blurry)
 
-## Next Up
-- (none — active spec complete)
+## Active / Next Up
+- (none — active specs complete)

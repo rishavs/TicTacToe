@@ -23,3 +23,10 @@
 - **Shallow/deep water**: Split water biomes into DeepOcean/ShallowOcean/DeepLake/ShallowLake. Added `IsShallow` + `assignWaterDepth` (noise-blended elevation threshold `Elevation + noise*0.15 > -0.25`). 20 biomes total. Added to pipeline after elevation.
 - **Watershed simulation (reverted)**: Attempted rainfall→flow accumulation→percentile river detection + watershed heatmap rendering. Rivers too few/too small, map broke. Reverted to N-spring approach.
 - **Biome collapse (reverted)**: Attempted merging ShallowOcean/DeepLake/ShallowLake into BiomeShallowWater + cliff shores + rivers slider. Map broke. Reverted to 20-biome split water system.
+
+## 2026-07-16
+
+- **Spec reconciliation**: Warmed project state against code. Updated 004 body to current implementation and closed it complete. Updated 005 body to current partial state and marked in-progress: lighting/rendering + noisy-edge data exist; Edges/Fills viewer toggles still pending. Noted LeanSpec MCP content updates work, but status updates did not apply, and `lean-spec` CLI was unavailable on PATH; status frontmatter corrected directly as fallback.
+- **005 closed**: User clarified Edges/Fills were tried earlier, gave no benefit, and were removed from code. Updated 005 as a complete closed decision: Biomes/Light remain, Edges/Fills are intentionally not planned. 006 later removed the unused noisy-edge generation path.
+- **006 cleanup implemented**: Created cleanup spec and implemented review items. Removed unused noisy-edge generation/file, river width/widening config/path, D8 helpers, and unused camera zoom-at helper. Added shared scene constants, config-backed spring/water-depth/lighting tunables, reused FBM noise generators, extracted map viewer config/input/render helpers, and debounced slider regeneration. `go test ./...` and `go vet ./...` pass.
+- **ARCH mapgen logic**: Added dedicated `Mapgen Logic` section to ARCH.md covering `GameMap`, `Tile`, `MapConfig`, the full generation pipeline, and the scene/rendering boundary. Future mapgen changes should update this section.

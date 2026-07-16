@@ -21,13 +21,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return 320, 180
+	return scene.InternalWidth, scene.InternalHeight
 }
 
 func main() {
 	manager := scene.NewManager(scene.NewMenuScene())
 
-	ebiten.SetWindowSize(640, 480)
+	ebiten.SetWindowSize(scene.InternalWidth*scene.WindowScale, scene.InternalHeight*scene.WindowScale)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Stoneheart")
 	if err := ebiten.RunGame(&Game{manager: manager}); err != nil {

@@ -3,7 +3,7 @@ package mapgen
 type BiomeType int
 
 const (
-	BiomeDeepOcean              BiomeType = iota
+	BiomeDeepOcean BiomeType = iota
 	BiomeShallowOcean
 	BiomeDeepLake
 	BiomeShallowLake
@@ -37,15 +37,13 @@ type Tile struct {
 	IsCoast     bool
 	IsShallow   bool
 	IsRiver     bool
-	RiverWidth  int
 }
 
 type GameMap struct {
-	Width      int
-	Height     int
-	Tiles      []Tile
-	Seed       int64
-	NoisyEdges *NoisyEdges
+	Width  int
+	Height int
+	Tiles  []Tile
+	Seed   int64
 }
 
 type MapConfig struct {
@@ -56,10 +54,18 @@ type MapConfig struct {
 	IslandInflate   float64
 	NoiseAmplitudes []float64
 	NumRivers       int
-	RiverMaxWidth   int
+	MinSpringElev   float64
+	MaxSpringElev   float64
 	MoistureBias    float64
 	NorthTempBias   float64
 	SouthTempBias   float64
+	WaterDepthScale float64
+	WaterDepthAmp   float64
+	WaterDepthLimit float64
+	LightAmbient    float64
+	LightSlopeScale float64
+	LightMin        float64
+	LightMax        float64
 }
 
 func DefaultConfig() MapConfig {
@@ -71,10 +77,18 @@ func DefaultConfig() MapConfig {
 		IslandInflate:   0.4,
 		NoiseAmplitudes: []float64{0.5, 0.25, 0.125, 0.0625},
 		NumRivers:       30,
-		RiverMaxWidth:   4,
+		MinSpringElev:   0.3,
+		MaxSpringElev:   0.9,
 		MoistureBias:    0.0,
 		NorthTempBias:   0.0,
 		SouthTempBias:   0.0,
+		WaterDepthScale: 200,
+		WaterDepthAmp:   0.15,
+		WaterDepthLimit: -0.25,
+		LightAmbient:    0.5,
+		LightSlopeScale: 2.0,
+		LightMin:        0.2,
+		LightMax:        1.0,
 	}
 }
 
@@ -113,33 +127,20 @@ func (m *GameMap) Each(f func(x, y int, t *Tile)) {
 	}
 }
 
+func (m *GameMap) EachN4(idx int, f func(nidx int, dir int)) {
+	for dir := 0; dir < 4; dir++ {
+		nidx, ok := N4Neighbor(idx, m.Width, m.Height, dir)
+		if ok {
+			f(nidx, dir)
+		}
+	}
+}
+
 var N4Offsets = [4][2]int{
 	{1, 0},  // 0: E
 	{0, 1},  // 1: S
 	{-1, 0}, // 2: W
 	{0, -1}, // 3: N
-}
-
-var D8Offsets = [8][2]int{
-	{1, 0},   // 0: E
-	{1, 1},   // 1: SE
-	{0, 1},   // 2: S
-	{-1, 1},  // 3: SW
-	{-1, 0},  // 4: W
-	{-1, -1}, // 5: NW
-	{0, -1},  // 6: N
-	{1, -1},  // 7: NE
-}
-
-func D8Neighbor(idx, w, h int, dir int) (int, bool) {
-	x := idx % w
-	y := idx / w
-	nx := x + D8Offsets[dir][0]
-	ny := y + D8Offsets[dir][1]
-	if nx < 0 || nx >= w || ny < 0 || ny >= h {
-		return 0, false
-	}
-	return ny*w + nx, true
 }
 
 func N4Neighbor(idx, w, h int, dir int) (int, bool) {

@@ -1,6 +1,6 @@
 package mapgen
 
-func assignLighting(m *GameMap) {
+func assignLighting(m *GameMap, cfg MapConfig) {
 	for y := 1; y < m.Height-1; y++ {
 		for x := 1; x < m.Width-1; x++ {
 			t := m.Tile(x, y)
@@ -10,12 +10,12 @@ func assignLighting(m *GameMap) {
 			}
 			dx := m.Tile(x+1, y).Elevation - m.Tile(x-1, y).Elevation
 			dy := m.Tile(x, y-1).Elevation - m.Tile(x, y+1).Elevation
-			l := 0.5 + (dx+dy)*2.0
-			if l < 0.2 {
-				l = 0.2
+			l := cfg.LightAmbient + (dx+dy)*cfg.LightSlopeScale
+			if l < cfg.LightMin {
+				l = cfg.LightMin
 			}
-			if l > 1.0 {
-				l = 1.0
+			if l > cfg.LightMax {
+				l = cfg.LightMax
 			}
 			t.Light = l
 		}

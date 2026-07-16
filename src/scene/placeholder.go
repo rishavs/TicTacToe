@@ -59,7 +59,7 @@ func (s *PlaceholderScene) Draw(screen *ebiten.Image) {
 
 	w, _ := text.Measure(s.name, nameFace, 0)
 	op := &text.DrawOptions{}
-	op.GeoM.Translate((320-w)/2, 80)
+	op.GeoM.Translate((InternalWidth-w)/2, 80)
 	op.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, s.name, nameFace, op)
 
