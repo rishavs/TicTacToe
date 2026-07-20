@@ -22,7 +22,7 @@ use self::noise::{fractal_noise_2d, simplex_fractal_noise_2d};
 use generate::generate_map;
 use generate::generate_map_with_shallow_sea;
 use model::{BiomeCount, Center, Corner, Edge, NoisyEdge, PolyMap};
-use noise::IslandProfile;
+use noise::{IslandProfile, PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS};
 #[cfg(test)]
 use random::map_random_u32;
 use random::{MapRng, map_random_f32, map_random_i32, map_rng};
@@ -123,18 +123,16 @@ enum ShallowSeaSize {
     Narrow,
     Normal,
     Wide,
-    VeryWide,
 }
 
 impl ShallowSeaSize {
-    const ALL: [Self; 4] = [Self::Narrow, Self::Normal, Self::Wide, Self::VeryWide];
+    const ALL: [Self; 3] = [Self::Narrow, Self::Normal, Self::Wide];
 
     fn label(self) -> &'static str {
         match self {
             Self::Narrow => "Narrow",
             Self::Normal => "Normal",
             Self::Wide => "Wide",
-            Self::VeryWide => "Very Wide",
         }
     }
 
@@ -148,7 +146,6 @@ impl ShallowSeaSize {
             "narrow" => Some(Self::Narrow),
             "normal" => Some(Self::Normal),
             "wide" => Some(Self::Wide),
-            "verywide" => Some(Self::VeryWide),
             _ => None,
         }
     }
@@ -158,8 +155,73 @@ impl ShallowSeaSize {
             Self::Narrow => 1,
             Self::Normal => 2,
             Self::Wide => 3,
-            Self::VeryWide => 4,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BayRounding {
+    Light,
+    Normal,
+    Strong,
+}
+
+impl BayRounding {
+    const ALL: [Self; 3] = [Self::Light, Self::Normal, Self::Strong];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Light => "Light",
+            Self::Normal => "Normal",
+            Self::Strong => "Strong",
+        }
+    }
+
+    fn from_debug_env(value: &str) -> Option<Self> {
+        match value
+            .trim()
+            .to_lowercase()
+            .replace([' ', '_', '-'], "")
+            .as_str()
+        {
+            "light" => Some(Self::Light),
+            "normal" => Some(Self::Normal),
+            "strong" => Some(Self::Strong),
+            _ => None,
+        }
+    }
+
+    fn base_closing_radius(self, shallow_sea_size: ShallowSeaSize) -> usize {
+        match self {
+            Self::Light => 1,
+            Self::Normal => 2,
+            Self::Strong => match shallow_sea_size {
+                ShallowSeaSize::Narrow => 4,
+                ShallowSeaSize::Normal => 5,
+                ShallowSeaSize::Wide => 6,
+            },
+        }
+    }
+
+    fn concavity_closing_radius(
+        self,
+        shallow_sea_size: ShallowSeaSize,
+        grid_width: usize,
+    ) -> usize {
+        let base = self.base_closing_radius(shallow_sea_size);
+        if base == 0 {
+            return 0;
+        }
+        ((base as f32 * grid_width as f32 / 63.0).round() as usize).max(base)
+    }
+
+    fn concavity_closing_max_distance(
+        self,
+        shallow_sea_size: ShallowSeaSize,
+        grid_width: usize,
+    ) -> i32 {
+        let radius = self.concavity_closing_radius(shallow_sea_size, grid_width);
+        shallow_sea_size.guaranteed_shallow_distance() + radius as i32 + 2
     }
 }
 
@@ -167,7 +229,8 @@ const POINT_COUNTS: [usize; 4] = [4000, 8000, 16000, 32000];
 const DEFAULT_ISLAND_TYPE: IslandType = IslandType::Perlin;
 const DEFAULT_POINT_TYPE: PointType = PointType::Square;
 const DEFAULT_POINT_COUNT: usize = 4000;
-const DEFAULT_SHALLOW_SEA_SIZE: ShallowSeaSize = ShallowSeaSize::Narrow;
+const DEFAULT_SHALLOW_SEA_SIZE: ShallowSeaSize = ShallowSeaSize::Wide;
+const DEFAULT_BAY_ROUNDING: BayRounding = BayRounding::Light;
 const DEFAULT_VIEW_MODE: ViewMode = ViewMode::Biome;
 
 fn island_button_x_positions() -> &'static [f32] {
@@ -228,6 +291,7 @@ struct MapgenScene {
     point_type: PointType,
     point_count: usize,
     shallow_sea_size: ShallowSeaSize,
+    bay_rounding: BayRounding,
     view_mode: ViewMode,
     map: Option<PolyMap>,
     generation: Option<GenerationJob>,
@@ -247,6 +311,7 @@ struct GenerationRequest {
     point_type: PointType,
     point_count: usize,
     shallow_sea_size: ShallowSeaSize,
+    bay_rounding: BayRounding,
 }
 
 impl MapgenScene {
@@ -270,6 +335,10 @@ impl MapgenScene {
             .ok()
             .and_then(|value| ShallowSeaSize::from_debug_env(&value))
             .unwrap_or(DEFAULT_SHALLOW_SEA_SIZE);
+        let bay_rounding = env::var("TICTACTOE_MAPGEN_BAY_ROUNDING")
+            .ok()
+            .and_then(|value| BayRounding::from_debug_env(&value))
+            .unwrap_or(DEFAULT_BAY_ROUNDING);
         let view_mode = env::var("TICTACTOE_MAPGEN_VIEW")
             .ok()
             .and_then(|value| ViewMode::from_debug_env(&value))
@@ -283,6 +352,7 @@ impl MapgenScene {
             point_type,
             point_count,
             shallow_sea_size,
+            bay_rounding,
             view_mode,
             map: None,
             generation: None,
@@ -396,6 +466,7 @@ impl MapgenScene {
             point_type: self.point_type,
             point_count: self.point_count,
             shallow_sea_size: self.shallow_sea_size,
+            bay_rounding: self.bay_rounding,
         };
         self.start_generation(request);
     }
@@ -417,15 +488,17 @@ impl MapgenScene {
                 worker_request.point_type,
                 worker_request.point_count,
                 worker_request.shallow_sea_size,
+                worker_request.bay_rounding,
             );
             let _ = sender.send(map);
         });
         self.generation = Some(GenerationJob { receiver });
         self.status = format!(
-            "Generating {} / {} sites / {} sea...",
+            "Generating {} / {} sites / {} sea / {} rounding...",
             request.island_type.label(),
             request.point_count,
-            request.shallow_sea_size.label()
+            request.shallow_sea_size.label(),
+            request.bay_rounding.label()
         );
     }
 
@@ -440,10 +513,11 @@ impl MapgenScene {
                 self.generation = None;
                 self.pan = clamp_pan(self.pan, self.zoom);
                 self.status = format!(
-                    "{} / {} sites / {} sea",
+                    "{} / {} sites / {} sea / {} rounding",
                     self.island_type.label(),
                     centers,
-                    self.shallow_sea_size.label()
+                    self.shallow_sea_size.label(),
+                    self.bay_rounding.label()
                 );
             }
             Err(TryRecvError::Empty) => {}

@@ -2,7 +2,7 @@ use super::IslandType;
 use ::noise::{Fbm, MultiFractal, NoiseFn, OpenSimplex, Perlin};
 use macroquad::prelude::Vec2;
 
-const PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS: f32 = 2.0;
+pub(super) const PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS: f32 = 5.0;
 const PERLIN_SHALLOW_SHELF_CELLS: f32 = 3.0;
 const PERLIN_EDGE_SOFTNESS_CELLS: f32 = 2.0;
 const PERLIN_BASE_THRESHOLD: f32 = 0.3;

@@ -2,7 +2,8 @@ use super::biome::{biome_color, calculate_lighting, get_biome, interpolate_color
 use super::*;
 use std::collections::{HashMap, VecDeque};
 
-const SHALLOW_BAY_ROUNDING_PASSES: usize = 8;
+const PINCHED_SHALLOW_CLEANUP_PASSES: usize = 8;
+const SHALLOW_CONCAVITY_CLOSING_PASSES: usize = 4;
 
 #[cfg(test)]
 pub(super) fn generate_map(
@@ -17,6 +18,7 @@ pub(super) fn generate_map(
         point_type,
         point_count,
         DEFAULT_SHALLOW_SEA_SIZE,
+        DEFAULT_BAY_ROUNDING,
     )
 }
 
@@ -26,6 +28,7 @@ pub(super) fn generate_map_with_shallow_sea(
     point_type: PointType,
     point_count: usize,
     shallow_sea_size: ShallowSeaSize,
+    bay_rounding: BayRounding,
 ) -> PolyMap {
     PolyMap::generate(
         seed_text,
@@ -33,6 +36,7 @@ pub(super) fn generate_map_with_shallow_sea(
         point_type,
         point_count,
         shallow_sea_size,
+        bay_rounding,
     )
 }
 impl PolyMap {
@@ -42,6 +46,7 @@ impl PolyMap {
         point_type: PointType,
         point_count: usize,
         shallow_sea_size: ShallowSeaSize,
+        bay_rounding: BayRounding,
     ) -> Self {
         let (shape_seed, variant) = parse_seed(seed_text);
         let island_shape = IslandProfile::new(island_type, shape_seed, point_count);
@@ -49,7 +54,7 @@ impl PolyMap {
         let mut map = Self::from_points(points, point_count, variant, island_shape);
         map.assign_corner_elevations();
         map.assign_ocean_coast_and_land();
-        map.assign_ocean_depths(shallow_sea_size);
+        map.assign_ocean_depths(island_type, shallow_sea_size, bay_rounding);
         map.redistribute_elevations();
         map.assign_polygon_elevations();
         map.calculate_downslopes();
@@ -258,7 +263,12 @@ impl PolyMap {
         }
     }
 
-    fn assign_ocean_depths(&mut self, shallow_sea_size: ShallowSeaSize) {
+    fn assign_ocean_depths(
+        &mut self,
+        island_type: IslandType,
+        shallow_sea_size: ShallowSeaSize,
+        bay_rounding: BayRounding,
+    ) {
         let mut queue = VecDeque::new();
         for center in &mut self.centers {
             center.shallow_ocean = false;
@@ -301,12 +311,34 @@ impl PolyMap {
         }
 
         self.fill_enclosed_deep_ocean_pockets();
-        self.round_shallow_bays(shallow_sea_size);
+        self.close_shallow_sea_concavities(shallow_sea_size, bay_rounding);
         self.fill_enclosed_deep_ocean_pockets();
         self.connect_islands_with_shallow_ocean();
         self.fill_enclosed_deep_ocean_pockets();
-        self.round_shallow_bays(shallow_sea_size);
+        self.close_shallow_sea_concavities(shallow_sea_size, bay_rounding);
         self.fill_enclosed_deep_ocean_pockets();
+        if island_type == IslandType::Perlin {
+            self.preserve_perlin_deep_ocean_edge_buffer();
+        }
+    }
+
+    fn preserve_perlin_deep_ocean_edge_buffer(&mut self) {
+        let Some(grid_width) = self.square_grid_width() else {
+            return;
+        };
+        let edge_buffer = MAP_SIZE / grid_width as f32 * PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS;
+
+        for center in &mut self.centers {
+            let distance_from_edge = center
+                .point
+                .x
+                .min(center.point.y)
+                .min(MAP_SIZE - center.point.x)
+                .min(MAP_SIZE - center.point.y);
+            if center.ocean && distance_from_edge <= edge_buffer {
+                center.shallow_ocean = false;
+            }
+        }
     }
 
     fn fill_enclosed_deep_ocean_pockets(&mut self) {
@@ -354,46 +386,268 @@ impl PolyMap {
         }
     }
 
-    fn round_shallow_bays(&mut self, shallow_sea_size: ShallowSeaSize) {
-        let max_distance = shallow_sea_size.guaranteed_shallow_distance() + 3;
+    fn close_shallow_sea_concavities(
+        &mut self,
+        shallow_sea_size: ShallowSeaSize,
+        bay_rounding: BayRounding,
+    ) {
+        let Some(grid_width) = self.square_grid_width() else {
+            return;
+        };
+        let radius = bay_rounding.concavity_closing_radius(shallow_sea_size, grid_width);
+        let max_distance =
+            bay_rounding.concavity_closing_max_distance(shallow_sea_size, grid_width);
 
-        for _ in 0..SHALLOW_BAY_ROUNDING_PASSES {
+        for _ in 0..SHALLOW_CONCAVITY_CLOSING_PASSES {
+            let closed = self.closed_land_or_shallow_mask(grid_width, radius);
             let rounded: Vec<_> = self
                 .centers
                 .iter()
-                .filter(|center| self.is_shallow_bay_rounding_candidate(center.index, max_distance))
+                .filter(|center| {
+                    center.ocean
+                        && !center.shallow_ocean
+                        && !center.border
+                        && center.ocean_distance <= max_distance
+                        && closed[center.index]
+                })
                 .map(|center| center.index)
                 .collect();
 
-            if rounded.is_empty() {
-                break;
-            }
-
+            let changed_by_closing = !rounded.is_empty();
             for center_id in rounded {
                 self.centers[center_id].shallow_ocean = true;
+            }
+
+            let changed_by_pinches =
+                self.fill_pinched_deep_ocean_cells(grid_width, radius, max_distance);
+            if !changed_by_closing && !changed_by_pinches {
+                break;
             }
         }
     }
 
-    fn is_shallow_bay_rounding_candidate(&self, center_id: usize, max_distance: i32) -> bool {
-        let center = &self.centers[center_id];
-        center.ocean
-            && !center.shallow_ocean
-            && !center.border
-            && center.ocean_distance <= max_distance
-            && self.shallow_ocean_neighbor_count(center_id) >= 2
+    fn square_grid_width(&self) -> Option<usize> {
+        let grid_width = (self.centers.len() as f32).sqrt() as usize;
+        (grid_width * grid_width == self.centers.len()).then_some(grid_width)
     }
 
-    fn shallow_ocean_neighbor_count(&self, center_id: usize) -> usize {
+    fn closed_land_or_shallow_mask(&self, grid_width: usize, radius: usize) -> Vec<bool> {
+        let source: Vec<_> = self
+            .centers
+            .iter()
+            .map(|center| !center.ocean || center.shallow_ocean)
+            .collect();
+        let dilated = dilate_square_mask(&source, grid_width, radius);
+        erode_square_mask(&dilated, grid_width, radius)
+    }
+
+    fn fill_pinched_deep_ocean_cells(
+        &mut self,
+        grid_width: usize,
+        reach: usize,
+        max_distance: i32,
+    ) -> bool {
+        let mut changed = false;
+        for _ in 0..PINCHED_SHALLOW_CLEANUP_PASSES {
+            let shallow_snapshot: Vec<_> = self
+                .centers
+                .iter()
+                .map(|center| center.ocean && center.shallow_ocean)
+                .collect();
+            let pinched: Vec<_> = self
+                .centers
+                .iter()
+                .filter(|center| {
+                    center.ocean
+                        && !center.shallow_ocean
+                        && !center.border
+                        && center.ocean_distance <= max_distance
+                        && (self.shallow_ocean_neighbor_count(center.index, &shallow_snapshot) >= 2
+                            || self.is_between_nearby_shallow_ocean(
+                                center.index,
+                                grid_width,
+                                reach,
+                                &shallow_snapshot,
+                            ))
+                })
+                .map(|center| center.index)
+                .collect();
+
+            if pinched.is_empty() {
+                break;
+            }
+
+            for center_id in pinched {
+                self.centers[center_id].shallow_ocean = true;
+            }
+            changed = true;
+        }
+        changed
+    }
+
+    fn shallow_ocean_neighbor_count(&self, center_id: usize, shallow: &[bool]) -> usize {
         self.centers[center_id]
             .neighbors
             .iter()
-            .filter(|&&neighbor| {
-                self.centers[neighbor].ocean && self.centers[neighbor].shallow_ocean
-            })
+            .filter(|&&neighbor| shallow[neighbor])
             .count()
     }
 
+    fn is_between_nearby_shallow_ocean(
+        &self,
+        center_id: usize,
+        grid_width: usize,
+        reach: usize,
+        shallow: &[bool],
+    ) -> bool {
+        const DIRECTIONS: [(isize, isize); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+        DIRECTIONS.iter().any(|&(dx, dy)| {
+            self.sees_shallow_ocean(center_id, grid_width, dx, dy, reach, shallow)
+                && self.sees_shallow_ocean(center_id, grid_width, -dx, -dy, reach, shallow)
+        })
+    }
+
+    fn sees_shallow_ocean(
+        &self,
+        center_id: usize,
+        grid_width: usize,
+        dx: isize,
+        dy: isize,
+        reach: usize,
+        shallow: &[bool],
+    ) -> bool {
+        let x = center_id / grid_width;
+        let y = center_id % grid_width;
+
+        for step in 1..=reach {
+            let Some(next_x) = x.checked_add_signed(dx * step as isize) else {
+                break;
+            };
+            let Some(next_y) = y.checked_add_signed(dy * step as isize) else {
+                break;
+            };
+            if next_x >= grid_width || next_y >= grid_width {
+                break;
+            }
+
+            let next_id = next_x * grid_width + next_y;
+            let next = &self.centers[next_id];
+            if shallow[next_id] {
+                return true;
+            }
+            if !next.ocean || next.border {
+                return false;
+            }
+        }
+
+        false
+    }
+}
+
+fn dilate_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
+    square_window_any(
+        &square_window_any(mask, grid_width, radius, true),
+        grid_width,
+        radius,
+        false,
+    )
+}
+
+fn erode_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
+    square_window_all(
+        &square_window_all(mask, grid_width, radius, true),
+        grid_width,
+        radius,
+        false,
+    )
+}
+
+fn square_window_any(
+    mask: &[bool],
+    grid_width: usize,
+    radius: usize,
+    horizontal: bool,
+) -> Vec<bool> {
+    let mut out = vec![false; mask.len()];
+    let line_count = grid_width;
+    let line_len = grid_width;
+
+    for line in 0..line_count {
+        let mut active = 0usize;
+        for offset in 0..=radius.min(line_len - 1) {
+            let id = oriented_index(line, offset, grid_width, horizontal);
+            active += usize::from(mask[id]);
+        }
+
+        for pos in 0..line_len {
+            let id = oriented_index(line, pos, grid_width, horizontal);
+            out[id] = active > 0;
+
+            if pos >= radius {
+                let remove_pos = pos - radius;
+                let remove_id = oriented_index(line, remove_pos, grid_width, horizontal);
+                active -= usize::from(mask[remove_id]);
+            }
+            let add_pos = pos + radius + 1;
+            if add_pos < line_len {
+                let add_id = oriented_index(line, add_pos, grid_width, horizontal);
+                active += usize::from(mask[add_id]);
+            }
+        }
+    }
+
+    out
+}
+
+fn square_window_all(
+    mask: &[bool],
+    grid_width: usize,
+    radius: usize,
+    horizontal: bool,
+) -> Vec<bool> {
+    let mut out = vec![false; mask.len()];
+    let line_count = grid_width;
+    let line_len = grid_width;
+    let window_len = radius * 2 + 1;
+
+    for line in 0..line_count {
+        let mut active = 0usize;
+        for offset in 0..radius.min(line_len) {
+            let id = oriented_index(line, offset, grid_width, horizontal);
+            active += usize::from(mask[id]);
+        }
+
+        for pos in 0..line_len {
+            let add_pos = pos + radius;
+            if add_pos < line_len {
+                let add_id = oriented_index(line, add_pos, grid_width, horizontal);
+                active += usize::from(mask[add_id]);
+            }
+
+            let id = oriented_index(line, pos, grid_width, horizontal);
+            out[id] = pos >= radius && pos + radius < line_len && active == window_len;
+
+            if pos >= radius {
+                let remove_pos = pos - radius;
+                let remove_id = oriented_index(line, remove_pos, grid_width, horizontal);
+                active -= usize::from(mask[remove_id]);
+            }
+        }
+    }
+
+    out
+}
+
+fn oriented_index(line: usize, pos: usize, grid_width: usize, horizontal: bool) -> usize {
+    if horizontal {
+        line * grid_width + pos
+    } else {
+        pos * grid_width + line
+    }
+}
+
+impl PolyMap {
     fn connect_islands_with_shallow_ocean(&mut self) {
         let Some(mainland_start) = self.largest_passable_land_component_start() else {
             return;

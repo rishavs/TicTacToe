@@ -39,7 +39,8 @@ Current controls:
 - Seed text input, with random seed generation.
 - Island shape: perlin and simplex.
 - Island size: 4000, 8000, 16000, 32000 square-layout cells.
-- Shallow sea size: narrow, normal, wide, very wide.
+- Shallow sea size: narrow, normal, wide.
+- Bay rounding: light, normal, strong.
 - View mode: biome and slope-oriented debug rendering.
 - Biome list with color swatches and cell counts.
 - Pan and zoom for map inspection.
@@ -60,12 +61,12 @@ Ocean design:
 
 - Deep ocean represents open water farther away from land.
 - Shallow ocean follows the island coastline roughly, but not exactly.
-- The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf. `Narrow` is the default/current baseline; larger shallow sea settings convert additional near-land deep ocean bands into shallow sea.
-- Narrow deep-ocean fingers inside bays are rounded into shallow ocean when they are close to land and pinched by shallow water. This is a local cleanup, not a global shallow expansion.
+- The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf. `Wide` is the default/current baseline; smaller shallow sea settings preserve more near-land deep ocean.
+- Narrow deep-ocean fingers and concave deep-water inlets inside bays can be rounded into shallow ocean with the bay rounding control. `Light` is the default; `Normal` and `Strong` progressively close larger bites. The cleanup closes the land-plus-shallow-water mask, trims exposed edges back, then fills any remaining near-land pinches. This is intended to make the shallow boundary read as a rounded shelf rather than a concave polygon, while keeping border-connected open deep ocean as the impassable boundary.
 - Small deep-ocean pockets fully enclosed by shallow ocean are treated as shallow ocean; open/border-connected deep ocean remains deep.
 - Every island is connected back to the mainland through shallow ocean corridors. Corridor thickness scales with island size to avoid fragile one-cell bridge threads while keeping deep ocean as an impassable boundary.
 - Shallow/deep ocean are classification states only for now; they do not yet affect implemented movement, combat, resources, or win/loss rules.
-- Perlin maps keep land away from the generated map edge with an edge-distance falloff, leaving about two cells of deep-ocean buffer outside the shallow shelf without increasing grid size.
+- Perlin maps keep land away from the generated map edge with an edge-distance falloff, leaving about five cells of deep-ocean buffer outside the shallow shelf without increasing grid size.
 - Simplex maps keep their current island scale; their shape uses threshold constants rather than the Perlin cell-buffer rule.
 
 ## Combat, Rules, And Progression

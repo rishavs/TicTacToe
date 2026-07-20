@@ -192,6 +192,132 @@ fn deep_ocean_finger_cells(map: &PolyMap) -> Vec<usize> {
         .collect()
 }
 
+fn deep_ocean_concavity_cells(map: &PolyMap, reach: usize, max_ocean_distance: i32) -> Vec<usize> {
+    let grid_width = (map.centers.len() as f32).sqrt() as usize;
+    let directions: [(isize, isize); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+    map.centers
+        .iter()
+        .filter(|center| {
+            center.biome == "DEEP_OCEAN"
+                && !center.border
+                && center.ocean_distance <= max_ocean_distance
+                && directions.iter().any(|&(dx, dy)| {
+                    sees_shallow_in_direction(map, grid_width, center.index, dx, dy, reach)
+                        && sees_shallow_in_direction(map, grid_width, center.index, -dx, -dy, reach)
+                })
+        })
+        .map(|center| center.index)
+        .collect()
+}
+
+fn sees_shallow_in_direction(
+    map: &PolyMap,
+    grid_width: usize,
+    center_id: usize,
+    dx: isize,
+    dy: isize,
+    reach: usize,
+) -> bool {
+    let x = center_id / grid_width;
+    let y = center_id % grid_width;
+
+    for step in 1..=reach {
+        let Some(next_x) = x.checked_add_signed(dx * step as isize) else {
+            break;
+        };
+        let Some(next_y) = y.checked_add_signed(dy * step as isize) else {
+            break;
+        };
+        if next_x >= grid_width || next_y >= grid_width {
+            break;
+        }
+
+        let center = &map.centers[next_x * grid_width + next_y];
+        if center.biome == "SHALLOW_OCEAN" {
+            return true;
+        }
+        if !center.ocean {
+            return false;
+        }
+    }
+
+    false
+}
+
+fn deep_ocean_cells_left_by_mask_closing(
+    map: &PolyMap,
+    shallow_sea_size: ShallowSeaSize,
+) -> Vec<usize> {
+    let grid_width = (map.centers.len() as f32).sqrt() as usize;
+    let radius = mask_closing_radius(shallow_sea_size, grid_width);
+    let max_distance = shallow_sea_size.guaranteed_shallow_distance() + radius as i32 + 1;
+    let inside_mask: Vec<_> = map
+        .centers
+        .iter()
+        .map(|center| !center.ocean || center.shallow_ocean)
+        .collect();
+    let dilated = dilate_square_mask(&inside_mask, grid_width, radius);
+    let closed = erode_square_mask(&dilated, grid_width, radius);
+
+    map.centers
+        .iter()
+        .filter(|center| {
+            center.biome == "DEEP_OCEAN"
+                && !center.border
+                && center.ocean_distance <= max_distance
+                && closed[center.index]
+        })
+        .map(|center| center.index)
+        .collect()
+}
+
+fn mask_closing_radius(shallow_sea_size: ShallowSeaSize, grid_width: usize) -> usize {
+    let base = BayRounding::Strong.base_closing_radius(shallow_sea_size);
+    ((base as f32 * grid_width as f32 / 63.0).round() as usize).max(base)
+}
+
+fn dilate_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
+    let mut out = vec![false; mask.len()];
+    for center_id in 0..mask.len() {
+        let x = center_id / grid_width;
+        let y = center_id % grid_width;
+        out[center_id] =
+            each_square_neighbor(grid_width, x, y, radius).any(|neighbor| mask[neighbor]);
+    }
+    out
+}
+
+fn erode_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
+    let mut out = vec![false; mask.len()];
+    for center_id in 0..mask.len() {
+        let x = center_id / grid_width;
+        let y = center_id % grid_width;
+        out[center_id] = square_fits_grid(grid_width, x, y, radius)
+            && each_square_neighbor(grid_width, x, y, radius).all(|neighbor| mask[neighbor]);
+    }
+    out
+}
+
+fn square_fits_grid(grid_width: usize, x: usize, y: usize, radius: usize) -> bool {
+    x >= radius && y >= radius && x + radius < grid_width && y + radius < grid_width
+}
+
+fn each_square_neighbor(
+    grid_width: usize,
+    x: usize,
+    y: usize,
+    radius: usize,
+) -> impl Iterator<Item = usize> {
+    let min_x = x.saturating_sub(radius);
+    let max_x = (x + radius).min(grid_width - 1);
+    let min_y = y.saturating_sub(radius);
+    let max_y = (y + radius).min(grid_width - 1);
+
+    (min_x..=max_x)
+        .flat_map(move |next_x| (min_y..=max_y).map(move |next_y| next_x * grid_width + next_y))
+}
+
 #[test]
 fn default_seed_matches_swf_demo() {
     assert_eq!(parse_seed(DEFAULT_SEED_TEXT), (85882, 8));
@@ -202,7 +328,8 @@ fn default_scene_configuration_is_trimmed() {
     assert_eq!(DEFAULT_ISLAND_TYPE, IslandType::Perlin);
     assert_eq!(DEFAULT_POINT_TYPE, PointType::Square);
     assert_eq!(DEFAULT_POINT_COUNT, 4000);
-    assert_eq!(DEFAULT_SHALLOW_SEA_SIZE, ShallowSeaSize::Narrow);
+    assert_eq!(DEFAULT_SHALLOW_SEA_SIZE, ShallowSeaSize::Wide);
+    assert_eq!(DEFAULT_BAY_ROUNDING, BayRounding::Light);
     assert_eq!(DEFAULT_VIEW_MODE, ViewMode::Biome);
 }
 
@@ -230,6 +357,18 @@ fn debug_env_accepts_only_remaining_controls() {
     assert_eq!(
         ShallowSeaSize::from_debug_env("wide"),
         Some(ShallowSeaSize::Wide)
+    );
+    assert_eq!(
+        BayRounding::from_debug_env("light"),
+        Some(BayRounding::Light)
+    );
+    assert_eq!(
+        BayRounding::from_debug_env("normal"),
+        Some(BayRounding::Normal)
+    );
+    assert_eq!(
+        BayRounding::from_debug_env("strong"),
+        Some(BayRounding::Strong)
     );
 }
 
@@ -273,6 +412,7 @@ fn random_seed_keeps_visible_seed_value() {
         point_type: DEFAULT_POINT_TYPE,
         point_count: DEFAULT_POINT_COUNT,
         shallow_sea_size: DEFAULT_SHALLOW_SEA_SIZE,
+        bay_rounding: DEFAULT_BAY_ROUNDING,
         view_mode: DEFAULT_VIEW_MODE,
         map: None,
         generation: None,
@@ -357,10 +497,15 @@ fn demo_control_labels_match_reference() {
         .iter()
         .map(|size| size.label())
         .collect();
+    let bay_rounding_labels: Vec<_> = BayRounding::ALL
+        .iter()
+        .map(|rounding| rounding.label())
+        .collect();
     let view_labels: Vec<_> = ViewMode::ALL.iter().map(|mode| mode.label()).collect();
 
     assert_eq!(island_labels, ["Perlin", "Simplex"]);
-    assert_eq!(shallow_labels, ["Narrow", "Normal", "Wide", "Very Wide"]);
+    assert_eq!(shallow_labels, ["Narrow", "Normal", "Wide"]);
+    assert_eq!(bay_rounding_labels, ["Light", "Normal", "Strong"]);
     assert_eq!(view_labels, ["Biomes", "2D slopes"]);
     assert_eq!(&POINT_COUNTS[..], &[4000, 8000, 16000, 32000]);
 }
@@ -385,6 +530,10 @@ fn removed_controls_are_not_accepted_from_debug_env() {
     assert_eq!(ViewMode::from_debug_env("polygons"), None);
     assert_eq!(ViewMode::from_debug_env("watersheds"), None);
     assert_eq!(ShallowSeaSize::from_debug_env("huge"), None);
+    assert_eq!(ShallowSeaSize::from_debug_env("verywide"), None);
+    assert_eq!(ShallowSeaSize::from_debug_env("very wide"), None);
+    assert_eq!(BayRounding::from_debug_env("huge"), None);
+    assert_eq!(BayRounding::from_debug_env("none"), None);
 }
 
 #[test]
@@ -772,13 +921,15 @@ fn shallow_sea_size_expands_shallow_ocean_without_removing_deep_ocean() {
         PointType::Square,
         4000,
         ShallowSeaSize::Narrow,
+        DEFAULT_BAY_ROUNDING,
     );
-    let very_wide = generate_map_with_shallow_sea(
+    let wide = generate_map_with_shallow_sea(
         DEFAULT_SEED_TEXT,
         IslandType::Perlin,
         PointType::Square,
         4000,
-        ShallowSeaSize::VeryWide,
+        ShallowSeaSize::Wide,
+        DEFAULT_BAY_ROUNDING,
     );
 
     let narrow_shallow = narrow
@@ -786,15 +937,58 @@ fn shallow_sea_size_expands_shallow_ocean_without_removing_deep_ocean() {
         .iter()
         .filter(|center| center.biome == "SHALLOW_OCEAN")
         .count();
-    let very_wide_shallow = very_wide
+    let wide_shallow = wide
         .centers
         .iter()
         .filter(|center| center.biome == "SHALLOW_OCEAN")
         .count();
 
-    assert!(very_wide_shallow > narrow_shallow);
+    assert!(wide_shallow > narrow_shallow);
     assert!(
-        very_wide
+        wide.centers
+            .iter()
+            .any(|center| center.biome == "DEEP_OCEAN")
+    );
+}
+
+#[test]
+fn bay_rounding_expands_only_the_cleanup_strength() {
+    let light = generate_map_with_shallow_sea(
+        "85882-8",
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+        ShallowSeaSize::Narrow,
+        BayRounding::Light,
+    );
+    let normal = generate_map_with_shallow_sea(
+        "85882-8",
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+        ShallowSeaSize::Narrow,
+        BayRounding::Normal,
+    );
+    let strong = generate_map_with_shallow_sea(
+        "85882-8",
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+        ShallowSeaSize::Narrow,
+        BayRounding::Strong,
+    );
+
+    let shallow_count = |map: &PolyMap| {
+        map.centers
+            .iter()
+            .filter(|center| center.biome == "SHALLOW_OCEAN")
+            .count()
+    };
+
+    assert!(shallow_count(&normal) >= shallow_count(&light));
+    assert!(shallow_count(&strong) >= shallow_count(&normal));
+    assert!(
+        strong
             .centers
             .iter()
             .any(|center| center.biome == "DEEP_OCEAN")
@@ -811,6 +1005,65 @@ fn shallow_bays_round_off_near_land_deep_ocean_fingers() {
         assert!(
             deep_ocean_finger_cells(&map).is_empty(),
             "{seed} should not leave near-land deep ocean cells pinched between shallow ocean"
+        );
+    }
+}
+
+#[test]
+fn wide_shallow_sea_closes_concave_deep_ocean_notches() {
+    let map = generate_map_with_shallow_sea(
+        "50088-9",
+        IslandType::Perlin,
+        PointType::Square,
+        32000,
+        ShallowSeaSize::Wide,
+        BayRounding::Strong,
+    );
+
+    assert!(
+        deep_ocean_concavity_cells(&map, 4, 6).is_empty(),
+        "wide shallow sea should close deep-ocean notches that sit between nearby shallow water"
+    );
+}
+
+#[test]
+fn narrow_simplex_shallow_sea_closes_high_resolution_concave_notches() {
+    let seeds = ["85882-8", "85882-9", "85884-8", "85885-8", "50088-9"];
+
+    for seed in seeds {
+        let map = generate_map_with_shallow_sea(
+            seed,
+            IslandType::Simplex,
+            PointType::Square,
+            32000,
+            ShallowSeaSize::Narrow,
+            BayRounding::Strong,
+        );
+
+        assert!(
+            deep_ocean_concavity_cells(&map, 4, 4).is_empty(),
+            "{seed} should close broad high-resolution Simplex/Narrow concave notches"
+        );
+    }
+}
+
+#[test]
+fn narrow_perlin_shallow_sea_closes_high_resolution_inlets() {
+    let seeds = ["85882-8", "85882-9", "85884-8", "85885-8", "50088-9"];
+
+    for seed in seeds {
+        let map = generate_map_with_shallow_sea(
+            seed,
+            IslandType::Perlin,
+            PointType::Square,
+            32000,
+            ShallowSeaSize::Narrow,
+            BayRounding::Strong,
+        );
+
+        assert!(
+            deep_ocean_cells_left_by_mask_closing(&map, ShallowSeaSize::Narrow).is_empty(),
+            "{seed} should close broad high-resolution Perlin/Narrow deep-ocean inlets"
         );
     }
 }
@@ -844,7 +1097,7 @@ fn shallow_ocean_stays_closer_to_land_than_deep_ocean() {
 }
 
 #[test]
-fn perlin_keeps_two_outer_cells_as_deep_ocean_buffer() {
+fn perlin_keeps_five_outer_cells_as_deep_ocean_buffer() {
     let map = generate_map(
         DEFAULT_SEED_TEXT,
         IslandType::Perlin,
@@ -852,8 +1105,8 @@ fn perlin_keeps_two_outer_cells_as_deep_ocean_buffer() {
         4000,
     );
     let cell = MAP_SIZE / 63.0;
-    let deep_buffer = cell * 2.0;
-    let relaxed_band = cell * 5.0;
+    let deep_buffer = cell * 5.0;
+    let relaxed_band = cell * 8.0;
     let mut found_non_deep_ocean_after_buffer = false;
 
     for center in &map.centers {
@@ -877,7 +1130,7 @@ fn perlin_keeps_two_outer_cells_as_deep_ocean_buffer() {
 
     assert!(
         found_non_deep_ocean_after_buffer,
-        "Perlin edge buffer should relax after roughly two cells"
+        "Perlin edge buffer should relax after roughly five cells"
     );
 }
 

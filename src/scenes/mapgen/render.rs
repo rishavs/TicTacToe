@@ -127,7 +127,7 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
 
 fn draw_biome_list(map: Option<&PolyMap>, sidebar: Rect) {
     let x = sidebar.x + 18.0;
-    let mut y = 304.0;
+    let mut y = 390.0;
 
     draw_text("Biomes:", x, y, 18.0, BLACK);
     let Some(map) = map else {
@@ -190,18 +190,36 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
     widgets::Window::new(
         hash!("mapgen_shallow_sea"),
         vec2(x, 178.0),
-        vec2(232.0, 86.0),
+        vec2(232.0, 62.0),
     )
     .titlebar(false)
     .movable(false)
     .ui(&mut root_ui(), |ui| {
         ui.label(Some(vec2(72.0, 2.0)), "Shallow Sea:");
         for (index, size) in ShallowSeaSize::ALL.into_iter().enumerate() {
-            let button_x = [0.0, 60.0, 120.0, 0.0][index];
-            let button_y = [28.0, 28.0, 28.0, 56.0][index];
+            let button_x = [0.0, 60.0, 120.0][index];
             let label = selected_label(size.label(), size == scene.shallow_sea_size);
-            if ui.button(Some(vec2(button_x, button_y)), label.as_str()) {
+            if ui.button(Some(vec2(button_x, 28.0)), label.as_str()) {
                 scene.shallow_sea_size = size;
+                needs_regenerate = true;
+            }
+        }
+    });
+
+    widgets::Window::new(
+        hash!("mapgen_bay_rounding"),
+        vec2(x, 254.0),
+        vec2(232.0, 62.0),
+    )
+    .titlebar(false)
+    .movable(false)
+    .ui(&mut root_ui(), |ui| {
+        ui.label(Some(vec2(64.0, 2.0)), "Bay Rounding:");
+        for (index, rounding) in BayRounding::ALL.into_iter().enumerate() {
+            let button_x = [0.0, 56.0, 116.0][index];
+            let label = selected_label(rounding.label(), rounding == scene.bay_rounding);
+            if ui.button(Some(vec2(button_x, 28.0)), label.as_str()) {
+                scene.bay_rounding = rounding;
                 needs_regenerate = true;
             }
         }
