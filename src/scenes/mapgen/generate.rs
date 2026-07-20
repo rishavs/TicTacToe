@@ -413,12 +413,87 @@ impl PolyMap {
                 break;
             };
 
-            for center_id in path {
-                if self.centers[center_id].ocean {
-                    self.centers[center_id].shallow_ocean = true;
-                    self.centers[center_id].ocean_distance =
-                        self.centers[center_id].ocean_distance.max(2);
+            let radius = self.shallow_bridge_corridor_radius(&path);
+            self.carve_shallow_bridge_corridor(&path, radius);
+        }
+    }
+
+    fn shallow_bridge_corridor_radius(&self, path: &[usize]) -> i32 {
+        let target_land_size = path
+            .iter()
+            .rev()
+            .find(|&&center_id| !self.centers[center_id].water)
+            .map(|&center_id| self.land_component_size(center_id))
+            .unwrap_or(1);
+
+        match target_land_size {
+            0..=8 => 1,
+            9..=24 => 2,
+            _ => 3,
+        }
+    }
+
+    fn land_component_size(&self, start: usize) -> usize {
+        if self.centers[start].water {
+            return 0;
+        }
+
+        let mut visited = vec![false; self.centers.len()];
+        let mut queue = VecDeque::from([start]);
+        visited[start] = true;
+        let mut size = 0usize;
+
+        while let Some(center_id) = queue.pop_front() {
+            size += 1;
+            for &neighbor in &self.centers[center_id].neighbors {
+                if !visited[neighbor] && !self.centers[neighbor].water {
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor);
                 }
+            }
+        }
+
+        size
+    }
+
+    fn carve_shallow_bridge_corridor(&mut self, path: &[usize], radius: i32) {
+        let mut shallow = Vec::new();
+
+        for &center_id in path {
+            self.collect_bridge_corridor_cells(center_id, radius, &mut shallow);
+        }
+
+        shallow.sort_unstable();
+        shallow.dedup();
+
+        for center_id in shallow {
+            self.centers[center_id].shallow_ocean = true;
+            self.centers[center_id].ocean_distance = self.centers[center_id].ocean_distance.max(2);
+        }
+    }
+
+    fn collect_bridge_corridor_cells(&self, start: usize, radius: i32, out: &mut Vec<usize>) {
+        let mut visited = vec![false; self.centers.len()];
+        let mut queue = VecDeque::from([(start, 0)]);
+        visited[start] = true;
+
+        while let Some((center_id, distance)) = queue.pop_front() {
+            let center = &self.centers[center_id];
+            if center.ocean && !center.border {
+                out.push(center_id);
+            }
+
+            if distance >= radius {
+                continue;
+            }
+
+            for &neighbor in &center.neighbors {
+                if visited[neighbor] || self.centers[neighbor].border {
+                    continue;
+                }
+
+                visited[neighbor] = true;
+                queue.push_back((neighbor, distance + 1));
             }
         }
     }

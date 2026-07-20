@@ -68,8 +68,8 @@
 - [x] Shallow sea size control expands shallow water from the narrow default while preserving deep ocean
 - [x] Narrow deep-ocean fingers inside bays are rounded into shallow ocean without broadening the whole ocean
 - [x] Enclosed deep-ocean pockets fully surrounded by shallow ocean are promoted to shallow without removing open deep ocean
-- [x] Disconnected islands are joined to the mainland with minimal shallow-ocean paths while preserving border-connected deep ocean
-- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, bay rounding, island shallow connectivity, and drainage-loop behavior
+- [x] Disconnected islands are joined to the mainland with island-size shallow-ocean corridors while preserving border-connected deep ocean
+- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, bay rounding, island shallow connectivity, anti-thread bridge corridors, and drainage-loop behavior
 
 ## Removed / Stale Items
 

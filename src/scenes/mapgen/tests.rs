@@ -121,6 +121,59 @@ fn is_land_or_shallow_ocean(map: &PolyMap, center_id: usize) -> bool {
     !center.water || center.biome == "SHALLOW_OCEAN"
 }
 
+fn land_count_reachable_without(map: &PolyMap, blocked: Option<usize>) -> usize {
+    let Some(start) = map
+        .centers
+        .iter()
+        .find(|center| !center.water && Some(center.index) != blocked)
+        .map(|center| center.index)
+    else {
+        return 0;
+    };
+
+    let mut visited = vec![false; map.centers.len()];
+    let mut queue = VecDeque::from([start]);
+    visited[start] = true;
+    let mut land_count = 0usize;
+
+    while let Some(center_id) = queue.pop_front() {
+        if !map.centers[center_id].water {
+            land_count += 1;
+        }
+
+        for &neighbor in &map.centers[center_id].neighbors {
+            if Some(neighbor) == blocked
+                || visited[neighbor]
+                || !is_land_or_shallow_ocean(map, neighbor)
+            {
+                continue;
+            }
+            visited[neighbor] = true;
+            queue.push_back(neighbor);
+        }
+    }
+
+    land_count
+}
+
+fn non_coastal_shallow_bridge_articulations(map: &PolyMap) -> Vec<usize> {
+    let total_land = map.centers.iter().filter(|center| !center.water).count();
+
+    map.centers
+        .iter()
+        .filter(|center| {
+            center.biome == "SHALLOW_OCEAN"
+                && !center.border
+                && !center
+                    .neighbors
+                    .iter()
+                    .any(|&neighbor| !map.centers[neighbor].water)
+                && land_count_reachable_without(map, Some(center.index)) < total_land
+        })
+        .map(|center| center.index)
+        .collect()
+}
+
 fn deep_ocean_finger_cells(map: &PolyMap) -> Vec<usize> {
     map.centers
         .iter()
@@ -916,6 +969,20 @@ fn shallow_bridges_do_not_remove_open_deep_ocean() {
             .any(|&center_id| map.centers[center_id].border)),
         "shallow bridge cleanup must preserve the border-connected deep ocean boundary"
     );
+}
+
+#[test]
+fn island_bridges_do_not_depend_on_single_ocean_thread_cells() {
+    let seeds = ["85882-8", "85884-8", "85885-8"];
+
+    for seed in seeds {
+        let map = generate_map(seed, IslandType::Perlin, PointType::Square, 4000);
+
+        assert!(
+            non_coastal_shallow_bridge_articulations(&map).is_empty(),
+            "{seed} should not connect islands through one-cell shallow ocean threads"
+        );
+    }
 }
 
 #[test]
