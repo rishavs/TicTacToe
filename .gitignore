@@ -47,5 +47,7 @@ captures/
 .qa-captures/
 .tmp-qa-captures/
 
-# Local Go build/test cache for agent runs
+# Local build/test output
 .gocache/
+/temp
+/target

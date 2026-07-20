@@ -1,84 +1,79 @@
 # GAME DESIGN DOCUMENT
 
-> Living document — update as game mechanics, rules, and design decisions are made.
+> Living document - update as game mechanics, rules, and design decisions are made.
 
 ## Overview
 
-- **Title:** Stoneheart
-- **Genre:** Turn-based tactics
-- **Engine:** Ebiten (Go)
-- **Perspective:** TBD
+- **Title:** TicTacToe
+- **Current genre:** Experimental game shell with procedural map-generation viewer
+- **Runtime:** Rust + Macroquad
+- **Current playable surface:** Main menu, placeholder scenes, and interactive Mapgen scene
 
-## Core Game Loop
+The project is temporarily named TicTacToe. Existing map-generation work is still useful exploration, but the tactical/combat design from the older project has not been carried forward as implemented gameplay.
 
-*TBD*
+## Current Game Loop
 
-## Combat System
+1. Launch into the main menu.
+2. Choose Play, Mapgen, Battle, Settings, or Quit.
+3. Placeholder scenes show their scene name and return to the menu with Escape.
+4. Mapgen opens an interactive procedural island viewer.
+5. Mapgen users can adjust seed/options, regenerate, pan, zoom, and switch debug views.
 
-*TBD*
+## Implemented Scenes
 
-## Units & Characters
+| Scene | Design status |
+|-------|---------------|
+| Main menu | Implemented navigation shell. |
+| Play | Placeholder; no rules yet. |
+| Mapgen | Implemented procedural map viewer and experiment surface. |
+| Battle | Placeholder; no combat rules yet. |
+| Settings | Placeholder; no settings model yet. |
 
-*TBD*
+## Mapgen Design
 
-## Maps & Terrain
+Mapgen is the most developed design area. It is an exploratory island generator inspired by Red Blob style map-generation work and older Flash/SWF demo behavior.
 
-- **Grid:** Square tile grid (TMX-compatible data model, export later)
-- **Internal resolution:** 320×180 (pixel art)
-- **Tile size:** 16×16 px
-- **Map size:** Configurable, target 256×256 to 1024×1024
-- **Generation:** Procedural island generator (close port of Red Blob Games' mapgen2 to square grid)
+Current controls:
 
-### Biomes
+- Seed text input, with random seed generation.
+- Island shape: radial, perlin, simplex.
+- Point layout: square.
+- Point count: 4000, 8000, 16000, 32000.
+- View mode: biome and slope-oriented debug rendering.
+- Pan and zoom for map inspection.
 
-20 biomes: 4 water depth zones + 16 land types classified by temperature × moisture matrix (mapgen2 thresholds):
+Current generation concepts:
 
-| Biome | Conditions |
-|-------|-----------|
-| Deep Ocean | IsOcean, !IsShallow |
-| Shallow Ocean | IsOcean, IsShallow |
-| Deep Lake | IsWater, !IsOcean, marsh/ice excluded, !IsShallow |
-| Shallow Lake | IsWater, !IsOcean, marsh/ice excluded, IsShallow |
-| Marsh | IsWater, temperature > 0.9 |
-| Ice | IsWater, temperature < 0.2 |
-| Beach | IsCoast (land with ocean neighbor) |
-| Snow | Temp < 0.2, moisture > 0.50 |
-| Tundra | Temp < 0.2, moisture > 0.33 |
-| Bare | Temp < 0.2, moisture > 0.16 |
-| Scorched | Temp < 0.2, else |
-| Taiga | Temp 0.2–0.4, moisture > 0.66 |
-| Shrubland | Temp 0.2–0.4, moisture > 0.33 |
-| Temperate Desert | Temp 0.2–0.4, else |
-| Temperate Rain Forest | Temp 0.4–0.7, moisture > 0.83 |
-| Temperate Deciduous Forest | Temp 0.4–0.7, moisture > 0.50 |
-| Grassland | Temp 0.4–0.7, moisture > 0.16; or Temp ≥ 0.7, moisture > 0.16 |
-| Tropical Rain Forest | Temp ≥ 0.7, moisture > 0.66 |
-| Tropical Seasonal Forest | Temp ≥ 0.7, moisture > 0.33 |
-| Subtropical Desert | Temp ≥ 0.7, else |
+- Deterministic seed parsing from text values such as `85882-8`.
+- Square point selection and region construction.
+- Center/corner/edge graph linking.
+- Island profile shaping.
+- Elevation and moisture assignment.
+- River/drainage handling.
+- Biome classification.
+- Noisy edge paths for more organic region boundaries.
+- Color interpolation and biome palettes for rendering.
 
-### Generation Pipeline
+## Combat, Rules, And Progression
 
-1. `assignIslandWater` — FBM simplex noise + Chebyshev distance: `lerp(noise, 0.5, round) - (1-inflate)*dist² < 0`
-2. `assignOcean` — flood-fill from map edges (4-neighbor)
-3. `assignCoast` — topological: land tile with an ocean neighbor
-4. `assignElevation` — BFS from water-land boundary, randomized neighbor order, lake handling (increment=0), BFS parent as downslope
-5. `redistributeElevation` — quadratic redistribution: low elevations more common
-6. `assignHydrology` — rainfall, explicit lake basins, D8 flow directions, flow accumulation, watershed IDs, and river scale
-7. `assignWaterDepth` — noise-blended ocean depth; explicit lakes keep basin-derived shallow/deep state
-8. `assignMoisture` — rainfall blended with proximity to rivers, lakes, and ocean coast
-9. `redistributeMoisture` — linear redistribution over [bias, 1+bias]
-10. `assignTemperature` — `1.0 - elevation + lerp(biasNorth, biasSouth, latitude)`, no clamping
-11. `assignBiomes` — 20-biome classification from ocean/water/shallow/coast/temperature/moisture
-12. `assignLighting` — hillshade-style per-tile light level from neighboring elevation differentials
+No TicTacToe rules, battle rules, unit rules, win/loss conditions, or progression systems are implemented yet.
 
-### Hydrology
+Before adding gameplay rules, decide whether this project should become:
 
-- Rivers are no longer random spring lines. They are marked where accumulated downstream rainfall exceeds the configured flow threshold.
-- Lakes are explicit inland basins with lake IDs, surface levels, and outlet tiles.
-- Watershed IDs trace non-ocean tiles to a lake, ocean outlet, or terminal basin.
-- River scale comes from accumulated flow and is used by rendering as a variable water overlay.
-- Moisture uses rainfall plus proximity to rivers, lakes, and ocean coast before biome classification.
+- a literal TicTacToe game,
+- a tactics prototype using the temporary TicTacToe name,
+- or a map-generation sandbox that will later be renamed again.
 
-## Progression & Mechanics
+## UI Direction
 
-*TBD*
+- Use Macroquad UI for the current simple menu and debug controls.
+- Keep the first screen usable; no landing-page style shell.
+- Keep debug controls dense and functional for map inspection.
+- Prefer direct labels and immediate feedback over decorative UI until the actual game direction settles.
+
+## Design Constraints
+
+- Same seed plus same mapgen options should produce the same result.
+- Rendering should remain responsive while inspecting generated maps.
+- Placeholder scenes should stay simple until they receive real rules.
+- Documentation should describe the current Rust/Macroquad project, not the removed Go/Ebiten version.

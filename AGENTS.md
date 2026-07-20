@@ -1,198 +1,162 @@
-# stoneheart
+# TicTacToe
 
-> A turn-based tactics game built with Ebiten engine in Go.
+> A Rust + Macroquad game project currently focused on scene navigation and procedural map-generation experiments.
 
 ## Project Documentation
 
-- **ARCH.md** — Overall architecture of the game (systems, packages, data flow). Keep updated as development progresses.
-- **GDD.md** — Game Design Document (mechanics, logic, rules, game loop, combat formulas, units, maps). Keep updated as design decisions are made.
-- **CONV.md** — Terse running log of conversations and outcomes. Read on session start for context. Keep under ~400 lines; trim oldest entries when exceeded.
-- **STATUS.md** — Running checklist of completed work and pending todos. Update after every meaningful change.
+- **ARCH.md** - Current architecture, module layout, runtime flow, debug hooks, and system boundaries.
+- **GDD.md** - Current game design direction and mechanics decisions.
+- **STATUS.md** - Running checklist of completed work, current state, and next steps.
+- **docs/superpowers/specs/** - Lightweight design notes for larger changes.
+- **docs/superpowers/plans/** - Implementation plans for larger changes.
 
-## Local Go Cache
+Keep ARCH.md, GDD.md, and STATUS.md current after meaningful changes. LeanSpec has been removed from this project; do not create or manage `.lean-spec/` or `specs/` content.
 
-Keep Go build/test scratch output inside the project folder during agent work. Before running `go test`, `go vet`, `go build`, or `go run`, set `GOCACHE` to `.gocache` for that shell session/command.
+## Toolchain
 
-PowerShell example:
+This project uses Rust 2024 and Macroquad.
+
+Common commands:
 
 ```powershell
-$env:GOCACHE = "$PWD\.gocache"; go test ./...
+cargo test
+cargo run
+cargo build
 ```
 
 Guidelines:
-- Prefer the repo-local `.gocache/` over the default user cache outside the project.
-- `.gocache/` is ignored by git and should never be committed.
-- Do not use `go env -w` for this; keep the setting scoped to the current command/session.
-- Use an existing binary from `bin/` when the task only needs to launch the game and does not need a rebuild.
 
-## QA Capture / Visual Debugging
+- Always try to use cargo libraries, as long as the library is well maintained, correct and popular.
+- Use Macroquad APIs for rendering, input, UI, screenshots, and window setup unless a local module already provides a better abstraction.
 
-Use the built-in QA capture mode when you need to inspect the game visually, debug a render issue, or verify that a scene launches correctly. Prefer this over OS screenshots or ebitengine-mcp.
+## Debug Launch / Visual Capture
 
-```bash
-go run ./src --qa-scene mapgen --qa-seed 42 --qa-capture .qa-captures/mapgen.png
+Use Macroquad's built-in debug environment variables when you need to open a
+specific scene or save a screenshot for review. This is the preferred visual QA
+path for scene layout, mapgen output, and menu checks.
+
+### Launch Normally
+
+Run the game from the repo root:
+
+```powershell
+cargo run
 ```
 
-Supported scenes: `menu`, `mapgen`, `new`, `battle`, `settings`.
+The game opens at the main menu. From there:
 
-Guidelines:
-- Use `--qa-scene <name>` to launch directly into the scene under review.
-- Use `--qa-seed <n>` for deterministic mapgen captures.
-- Use `--qa-capture <path>` to save one rendered 320x180 PNG and exit.
-- Keep captures in `.qa-captures/`, `.tmp-qa-captures/`, or `captures/`; these folders are ignored by git.
-- Do not commit captures unless the user explicitly asks for visual artifacts.
-- After capturing, inspect images directly and use them to guide debugging/fixes.
+- Click `Play` to open the Play placeholder scene.
+- Click `Mapgen` to open the procedural map viewer.
+- Click `Battle` to open the Battle placeholder scene.
+- Click `Settings` to open the Settings placeholder scene.
+- Press `Escape` in placeholder scenes to return to the main menu.
+
+### Launch Directly To A Scene
+
+Set `TICTACTOE_START_SCENE` before `cargo run`:
+
+```powershell
+$env:TICTACTOE_START_SCENE = "mapgen"
+cargo run
+```
+
+Supported values:
+
+- `menu`
+- `play`
+- `mapgen`
+- `battle`
+- `settings`
+
+### Capture A Screenshot For Review
+
+Set the start scene, output path, and optional frame delay. The frame delay lets
+Macroquad draw a few frames before capture.
+
+```powershell
+$env:TICTACTOE_START_SCENE = "mapgen"
+$env:TICTACTOE_SCREENSHOT = ".qa-captures\mapgen.png"
+$env:TICTACTOE_SCREENSHOT_FRAMES = "3"
+cargo run
+```
+
+The app saves the PNG and exits automatically. Keep review captures in
+`.qa-captures/`, `.tmp-qa-captures/`, or `captures/`; those folders are ignored
+by git.
+
+Examples:
+
+```powershell
+# Main menu capture
+$env:TICTACTOE_START_SCENE = "menu"
+$env:TICTACTOE_SCREENSHOT = ".qa-captures\menu.png"
+$env:TICTACTOE_SCREENSHOT_FRAMES = "3"
+cargo run
+```
+
+```powershell
+# Mapgen capture with deterministic controls
+$env:TICTACTOE_START_SCENE = "mapgen"
+$env:TICTACTOE_MAPGEN_SEED = "85882-8"
+$env:TICTACTOE_MAPGEN_ISLAND = "perlin"
+$env:TICTACTOE_MAPGEN_POINTS = "square"
+$env:TICTACTOE_MAPGEN_COUNT = "4000"
+$env:TICTACTOE_MAPGEN_VIEW = "biomes"
+$env:TICTACTOE_SCREENSHOT = ".qa-captures\mapgen-seed-85882-8.png"
+$env:TICTACTOE_SCREENSHOT_FRAMES = "3"
+cargo run
+```
+
+After a capture, inspect the saved PNG directly before claiming visual behavior
+is correct.
 
 ## Design Principles
 
 | Principle | Details |
 |-----------|---------|
-| **Libraries first** | Prefer well-done, updated, popular Go libraries over writing from scratch. |
-| **Separate logic & rendering** | Game logic (rules, state, combat) must never depend on rendering code. Rendering reads game state; game state never knows about pixels. |
-| **Data-driven design** | Use config files / data structures for gameplay values (stats, abilities, maps). Enables future mod support — treat data as content, not code. |
-| **Decoupled entities** | Units, items, abilities, terrain — each in its own package with minimal cross-deps. Use interfaces at boundaries. |
-| **Simple & elegant** | Err on the side of less code, fewer packages, flatter hierarchies. A human has to maintain this. No cleverness for its own sake. |
+| **Current code is the source of truth** | Root docs must describe the Rust/Macroquad code that exists now. Avoid carrying forward stale Go/Ebiten assumptions. |
+| **Separate logic and rendering where practical** | Keep deterministic generation and simulation helpers testable without needing a live window. Rendering should read state and draw it. |
+| **Deterministic map generation** | Same seed and same controls should produce the same map. Preserve this for tests, visual debugging, and future replayability. |
+| **Small, explicit state** | Prefer clear structs, enums, and explicit transitions over hidden side effects. If global scene state is needed for Macroquad, keep it narrow and documented. |
+| **Config over constants when behavior is tunable** | Keep player-facing and debug-facing controls represented as data or well-named constants. |
+| **Simple boundaries first** | The current project is compact. Add modules only when they make the code easier to test, explain, or change. |
 
-### Additional Standards
+## Current Architecture Expectations
+
+- `src/main.rs` owns Macroquad setup, the main loop, scene dispatch, and screenshot capture.
+- `src/scenes/mod.rs` defines the `Scene` enum.
+- `src/scenes/menu.rs`, `play.rs`, `battle.rs`, and `settings.rs` are simple scene modules.
+- `src/scenes/mapgen.rs` currently contains the mapgen viewer, generation model, rendering helpers, debug controls, and tests.
+- The main menu should show TicTacToe branding.
+- Environment variable names should use the `TICTACTOE_` prefix.
+
+## Planning Workflow
+
+LeanSpec is not used here.
+
+For small bug fixes, doc corrections, and self-contained refactors:
+- Make the change directly.
+- Update ARCH.md, GDD.md, and STATUS.md if the project shape or design changed.
+- Run the smallest useful verification command, usually `cargo test`.
+
+For multi-part features or design decisions:
+- Write a concise Markdown spec under `docs/superpowers/specs/YYYY-MM-DD-topic.md`.
+- If the implementation is non-trivial, write an implementation plan under `docs/superpowers/plans/YYYY-MM-DD-topic.md`.
+- Keep the spec focused on intent and acceptance criteria; keep the plan focused on steps and verification.
+
+## Rust Standards
 
 | Guideline | Details |
 |-----------|---------|
-| **Testable logic** | Combat, pathfinding, AI — all must be testable without Ebiten running. Pure functions over methods on big structs. |
-| **State as value** | Game state is a single snapshot struct passed by value. Mutations return new state. Enables save/load, replay, undo. |
-| **No init() magic** | Explicit initialization over `init()` functions. AI agents lose track of implicit init ordering. |
-| **Config over convention** | Every tunable number lives in a config struct/file. No hardcoded values, even "temporary" ones. |
-| **One-way data flow** | Input → Logic → State → Render. No back-channels. No render callbacks mutating state. |
-| **Small interfaces** | 1–3 methods per interface. Named for what they consume (e.g., `MovementGrid`), not what implements them. |
-| **No global state** | No package-level `var` for game state. Pass context or state structs explicitly. |
-| **Asset pipeline** | Assets loaded once at startup into read-only caches. No filesystem reads during the game loop. |
+| **Use enums for states** | Scene/state transitions should be explicit and pattern-matchable. |
+| **Keep tests near pure logic** | Map generation helpers, parsing, clamping, layout math, and deterministic algorithms should have unit tests. |
+| **Avoid broad globals** | Static state such as the mapgen scene cache is acceptable only when it is narrow, intentional, and protected. |
+| **No filesystem reads in the hot loop** | Load or derive resources outside per-frame draw/update paths. |
+| **Profile before optimizing** | Map generation and rendering can get expensive; measure before introducing complex caching or concurrency. |
+| **Prefer standard library and current dependencies** | Do not add crates unless they solve a real problem better than the existing stack. |
 
-### Tactics-Specific Standards
+## Documentation Hygiene
 
-| Guideline | Details |
-|-----------|---------|
-| **Deterministic logic** | All game logic must be deterministic — same seed + same inputs = same outcome. Foundation for replays, AI debugging, and networked play. |
-| **Compute off main loop** | AI turns, pathfinding, simulation — run in separate goroutines. Render loop must never block; show progress/animations while computing. |
-| **Action validation** | Every action validates preconditions, computes result, then applies. Never assume validity. Failed validations are bugs, not user errors. |
-| **Turn state machine** | Formal turn/phase FSM. Predictable order: start-turn hooks → player input → execute actions → AI turn → end-turn hooks → next round. |
-| **Immutable event log** | Log every action as an immutable event entry. Enables replay debugging, undo, and delta-based save tracking without extra work. |
-| **Profile, don't guess** | Tactics AI and pathfinding will dominate CPU. Set early perf budgets. Profile before optimizing. No premature complexity. |
-| **FSM-first design** | Model game objects (units, abilities, AI, UI panels, turns) as Finite State Machines wherever applicable. FSMs make behavior explicit, testable, and prevent invalid state transitions. Use a lightweight FSM library (e.g., `github.com/looplab/fsm`) rather than hand-rolling state switches. |
-
-## 🚨 CRITICAL: Before ANY Task
-
-**STOP and check these first:**
-
-1. **Discover context** → Use `board` tool to see project state
-2. **Search for related work** → Use `search` tool before creating new specs
-3. **Never create files manually** → Always use `create` tool for new specs
-4. **Never implement without approval** → Creating a spec is NOT a signal to implement. Wait for explicit "implement" or "execute" confirmation before writing any code.
-
-> **Why?** Skipping discovery creates duplicate work. Manual file creation breaks LeanSpec tooling. Premature implementation bypasses the design review step, wastes work if requirements change, and leaves specs out of sync with code.
-
-## 🔧 Managing Specs
-
-### MCP Tools (Preferred) with CLI Fallback
-
-| Action         | MCP Tool   | CLI Fallback                                   |
-| -------------- | ---------- | ---------------------------------------------- |
-| Project status | `board`    | `leanspec board`                              |
-| List specs     | `list`     | `leanspec list`                               |
-| Search specs   | `search`   | `leanspec search "query"`                     |
-| View spec      | `view`     | `leanspec view <spec>`                        |
-| Create spec    | `create`   | `leanspec create <name>`                      |
-| Update spec    | `update`   | `leanspec update <spec> --status <status>`    |
-| Link specs     | `link`     | `leanspec link <spec> --depends-on <other>`   |
-| Unlink specs   | `unlink`   | `leanspec unlink <spec> --depends-on <other>` |
-| Dependencies   | `deps`     | `leanspec deps <spec>`                        |
-| Token count    | `tokens`   | `leanspec tokens <spec>`                      |
-| Validate specs | `validate` | `leanspec validate`                           |
-
-## ⚠️ Core Rules
-
-| Rule                                | Details                                                                                                               |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **NEVER edit frontmatter manually** | Use `update`, `link`, `unlink` for: `status`, `priority`, `tags`, `assignee`, `transitions`, timestamps, `depends_on` |
-| **ALWAYS link spec references**     | Content mentions another spec → `leanspec link <spec> --depends-on <other>`                                          |
-| **Track status transitions**        | `planned` → `in-progress` (before coding) → `complete` (after done)                                                   |
-| **Keep specs current**              | Document progress, decisions, and learnings as work happens. Obsolete specs mislead both humans and AI                |
-| **No nested code blocks**           | Use indentation instead                                                                                               |
-
-### 🚫 Common Mistakes
-
-| ❌ Don't                             | ✅ Do Instead                                |
-| ----------------------------------- | ------------------------------------------- |
-| Create spec files manually          | Use `create` tool                           |
-| Skip discovery                      | Run `board` and `search` first              |
-| Leave status as "planned"           | Update to `in-progress` before coding       |
-| Edit frontmatter manually           | Use `update` tool                           |
-| Complete spec without documentation | Document progress, prompts, learnings first |
-
-## 📋 SDD Workflow
-
-```
-BEFORE: board → search → check existing specs
-DURING: update status to in-progress → code → document decisions → link dependencies
-        → update ARCH.md + GDD.md as architecture/design evolves
-AFTER:  document completion → update status to complete
-        → ensure ARCH.md and GDD.md reflect final state
-```
-
-**Status tracks implementation, NOT spec writing.**
-
-**ARCH.md and GDD.md are living documents.** After every meaningful code change:
-- Update ARCH.md when packages, systems, or data flow change
-- Update GDD.md when game mechanics, rules, or design decisions are made
-- Update STATUS.md (tick completed items, add new todos, keep it current)
-
-## Spec Dependencies
-
-Use `depends_on` to express blocking relationships between specs:
-- **`depends_on`** = True blocker, work order matters, directional (A depends on B)
-
-Link dependencies when one spec builds on another:
-```bash
-leanspec link <spec> --depends-on <other-spec>
-```
-
-## When to Use Specs
-
-| ✅ Write spec        | ❌ Skip spec                |
-| ------------------- | -------------------------- |
-| Multi-part features | Bug fixes                  |
-| Breaking changes    | Trivial changes            |
-| Design decisions    | Self-explanatory refactors |
-
-## Token Thresholds
-
-| Tokens      | Status               |
-| ----------- | -------------------- |
-| <2,000      | ✅ Optimal            |
-| 2,000-3,500 | ✅ Good               |
-| 3,500-5,000 | ⚠️ Consider splitting |
-| >5,000      | 🔴 Must split         |
-
-## Quality Validation
-
-Before completing work, validate spec quality:
-```bash
-leanspec validate              # Check structure and quality
-leanspec validate --check-deps # Verify dependency alignment
-```
-
-Validation checks:
-- Missing required sections
-- Excessive length (>400 lines)
-- Content/frontmatter dependency misalignment
-- Invalid frontmatter fields
-
-## First Principles (Priority Order)
-
-1. **Context Economy** - <2,000 tokens optimal, >3,500 needs splitting
-2. **Signal-to-Noise** - Every word must inform a decision
-3. **Intent Over Implementation** - Capture why, let how emerge
-4. **Bridge the Gap** - Both human and AI must understand
-5. **Progressive Disclosure** - Add complexity only when pain is felt
-
----
-
-**Remember:** LeanSpec tracks what you're building. Keep specs in sync with your work!
+- Keep STATUS.md honest: checked items should reflect files and behavior that exist in the current checkout.
+- Keep ARCH.md architectural, not a changelog.
+- Keep GDD.md about Game logic direction, not implementation minutiae.
