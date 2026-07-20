@@ -29,7 +29,6 @@ use seed::is_seed_char;
 use seed::{parse_seed, push_seed_char, random_seed_text};
 
 const MAP_SIZE: f32 = 600.0;
-const MAP_VIEWPORT_BORDER: f32 = 37.5;
 const DEFAULT_SEED_TEXT: &str = "85882-8";
 const SIDEBAR_COLOR: Color = Color::new(0.72, 0.72, 0.64, 1.0);
 const LAKE_THRESHOLD: f32 = 0.3;
@@ -163,23 +162,20 @@ fn seed_field_rect(sidebar: Rect) -> Rect {
 
 fn map_source_rect(pan: Vec2, zoom: f32) -> Rect {
     let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
-    let viewport_size = MAP_SIZE + MAP_VIEWPORT_BORDER * 2.0;
-    let source_size = viewport_size / zoom;
-    let min_origin = -MAP_VIEWPORT_BORDER;
-    let max_origin = MAP_SIZE + MAP_VIEWPORT_BORDER - source_size;
+    let source_size = MAP_SIZE / zoom;
+    let max_origin = (MAP_SIZE - source_size).max(0.0);
     let center = vec2(MAP_SIZE / 2.0, MAP_SIZE / 2.0) + clamp_pan(pan, zoom);
     let origin = vec2(center.x - source_size / 2.0, center.y - source_size / 2.0);
     Rect::new(
-        origin.x.clamp(min_origin, max_origin),
-        origin.y.clamp(min_origin, max_origin),
+        origin.x.clamp(0.0, max_origin),
+        origin.y.clamp(0.0, max_origin),
         source_size,
         source_size,
     )
 }
 
 fn clamp_pan(pan: Vec2, zoom: f32) -> Vec2 {
-    let viewport_size = MAP_SIZE + MAP_VIEWPORT_BORDER * 2.0;
-    let half_range = (viewport_size - viewport_size / zoom.clamp(MIN_ZOOM, MAX_ZOOM)) / 2.0;
+    let half_range = (MAP_SIZE - MAP_SIZE / zoom.clamp(MIN_ZOOM, MAX_ZOOM)) / 2.0;
     vec2(
         pan.x.clamp(-half_range, half_range),
         pan.y.clamp(-half_range, half_range),

@@ -4,7 +4,9 @@
 
 **Goal:** Add deep-ocean breathing room around the mapgen viewport and start the desktop window maximized.
 
-**Architecture:** Treat the breathing room as render-space padding around the generated 600x600 map, not as generated graph cells. Keep generation deterministic and unchanged; only camera/source-rectangle math and startup window behavior change.
+**Status:** Superseded for map breathing-room behavior. The render-only viewport padding from this plan was replaced by `2026-07-20-perlin-edge-buffer.md`, which shrinks Perlin land/shallow water away from the generated map edge. The wide-window centering and maximized startup portions remain useful.
+
+**Architecture:** Original render-space padding approach was removed. Keep only the wide-window centered map area and maximized startup behavior from this plan.
 
 **Tech Stack:** Rust 2024, Macroquad 0.4.15, Windows-only `windows-sys` for true maximize behavior.
 

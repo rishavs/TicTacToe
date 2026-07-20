@@ -125,6 +125,11 @@ fn wide_mapgen_layout_centers_square_map_in_map_area() {
 }
 
 #[test]
+fn wide_map_area_uses_neutral_backdrop_color() {
+    assert_eq!(render::map_area_background_color(), 0x6f7074);
+}
+
+#[test]
 fn square_point_selector_uses_floor_sqrt_grid_counts() {
     assert_eq!(generate_square_points(4000).len(), 63 * 63);
     assert_eq!(generate_square_points(8000).len(), 89 * 89);
@@ -150,8 +155,8 @@ fn map_generation_builds_graph_with_land_and_water() {
 
 #[test]
 fn island_shape_buttons_change_inside_function() {
-    let radial = IslandProfile::new(IslandType::Radial, 85882);
-    let perlin = IslandProfile::new(IslandType::Perlin, 85882);
+    let radial = IslandProfile::new(IslandType::Radial, 85882, DEFAULT_POINT_COUNT);
+    let perlin = IslandProfile::new(IslandType::Perlin, 85882, DEFAULT_POINT_COUNT);
 
     let sample_points = [
         vec2(-0.75, -0.75),
@@ -248,27 +253,27 @@ fn library_noise_wrappers_are_deterministic_and_seeded() {
 fn zoom_source_rect_crops_around_pan() {
     let rect = map_source_rect(vec2(64.0, -32.0), 2.0);
 
-    assert_eq!(rect.w, 337.5);
-    assert_eq!(rect.h, 337.5);
-    assert_eq!(rect.x, 195.25);
-    assert_eq!(rect.y, 99.25);
+    assert_eq!(rect.w, 300.0);
+    assert_eq!(rect.h, 300.0);
+    assert_eq!(rect.x, 214.0);
+    assert_eq!(rect.y, 118.0);
 }
 
 #[test]
-fn zoomed_out_source_rect_includes_ocean_border() {
+fn zoomed_out_source_rect_matches_generated_map_bounds() {
     let rect = map_source_rect(Vec2::ZERO, MIN_ZOOM);
 
-    assert_eq!(rect.x, -37.5);
-    assert_eq!(rect.y, -37.5);
-    assert_eq!(rect.w, 675.0);
-    assert_eq!(rect.h, 675.0);
+    assert_eq!(rect.x, 0.0);
+    assert_eq!(rect.y, 0.0);
+    assert_eq!(rect.w, MAP_SIZE);
+    assert_eq!(rect.h, MAP_SIZE);
 }
 
 #[test]
 fn pan_is_clamped_to_visible_map_bounds() {
     let pan = clamp_pan(vec2(999.0, -999.0), 4.0);
 
-    assert_eq!(pan, vec2(253.125, -253.125));
+    assert_eq!(pan, vec2(225.0, -225.0));
 }
 
 #[test]
@@ -590,6 +595,66 @@ fn shallow_ocean_stays_closer_to_land_than_deep_ocean() {
 
     assert!(shallow_touching_land);
     assert!(!deep_touching_land);
+}
+
+#[test]
+fn perlin_keeps_two_outer_cells_as_deep_ocean_buffer() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let cell = MAP_SIZE / 63.0;
+    let deep_buffer = cell * 2.0;
+    let relaxed_band = cell * 5.0;
+    let mut found_non_deep_ocean_after_buffer = false;
+
+    for center in &map.centers {
+        let distance_from_edge = center
+            .point
+            .x
+            .min(center.point.y)
+            .min(MAP_SIZE - center.point.x)
+            .min(MAP_SIZE - center.point.y);
+        if distance_from_edge <= deep_buffer {
+            assert!(
+                center.ocean && center.biome == "DEEP_OCEAN",
+                "expected outer Perlin cell to be deep ocean at {:?}, got {}",
+                center.point,
+                center.biome
+            );
+        } else if distance_from_edge <= relaxed_band && center.biome != "DEEP_OCEAN" {
+            found_non_deep_ocean_after_buffer = true;
+        }
+    }
+
+    assert!(
+        found_non_deep_ocean_after_buffer,
+        "Perlin edge buffer should relax after roughly two cells"
+    );
+}
+
+#[test]
+fn simplex_is_not_forced_to_perlin_two_cell_edge_buffer() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Simplex,
+        PointType::Square,
+        4000,
+    );
+    let cell = MAP_SIZE / 63.0;
+    let buffer = cell * 2.0;
+
+    assert!(map.centers.iter().any(|center| {
+        let distance_from_edge = center
+            .point
+            .x
+            .min(center.point.y)
+            .min(MAP_SIZE - center.point.x)
+            .min(MAP_SIZE - center.point.y);
+        distance_from_edge <= buffer && center.biome != "DEEP_OCEAN"
+    }));
 }
 
 #[test]

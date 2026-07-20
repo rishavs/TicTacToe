@@ -8,7 +8,7 @@ pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: R
         layout.map_area_rect.y,
         layout.map_area_rect.w,
         layout.map_area_rect.h,
-        color_from_u32(0x333866),
+        color_from_u32(map_area_background_color()),
     );
     draw_map(
         scene.map.as_ref(),
@@ -27,6 +27,10 @@ pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: R
     draw_controls(scene, layout.sidebar_rect);
     draw_seed_field(scene, layout.sidebar_rect);
     draw_footer(scene, layout.sidebar_rect);
+}
+
+pub(super) fn map_area_background_color() -> u32 {
+    0x6f7074
 }
 
 fn draw_map(map: Option<&PolyMap>, view_mode: ViewMode, map_rect: Rect, source_rect: Rect) {

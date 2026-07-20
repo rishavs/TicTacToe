@@ -18,7 +18,7 @@ impl PolyMap {
         point_count: usize,
     ) -> Self {
         let (shape_seed, variant) = parse_seed(seed_text);
-        let island_shape = IslandProfile::new(island_type, shape_seed);
+        let island_shape = IslandProfile::new(island_type, shape_seed, point_count);
         let points = select_points(point_type, point_count, shape_seed);
         let mut map = Self::from_points(points, point_count, variant, island_shape);
         map.assign_corner_elevations();

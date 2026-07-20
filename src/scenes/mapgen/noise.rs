@@ -4,25 +4,45 @@ use ::noise::{Fbm, MultiFractal, NoiseFn, OpenSimplex, Perlin};
 use macroquad::prelude::Vec2;
 use std::f32::consts::PI;
 
+const PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS: f32 = 2.0;
+const PERLIN_SHALLOW_SHELF_CELLS: f32 = 3.0;
+const PERLIN_EDGE_SOFTNESS_CELLS: f32 = 2.0;
+const PERLIN_BASE_THRESHOLD: f32 = 0.3;
+const PERLIN_RADIAL_FALLOFF: f32 = 0.3;
+const PERLIN_EDGE_BIAS: f32 = 0.35;
+const SIMPLEX_BASE_THRESHOLD: f32 = 0.34;
+const SIMPLEX_RADIAL_FALLOFF: f32 = 0.34;
+
 pub(super) struct IslandProfile {
     kind: IslandType,
     bumps: i32,
     start_angle: f32,
     dip_angle: f32,
     dip_width: f32,
+    perlin_hard_edge_buffer: f32,
+    perlin_soft_edge_buffer: f32,
     perlin_noise: Fbm<Perlin>,
     simplex_noise: OpenSimplex,
 }
 
 impl IslandProfile {
-    pub(super) fn new(kind: IslandType, seed: u32) -> Self {
+    pub(super) fn new(kind: IslandType, seed: u32, point_count: usize) -> Self {
         let mut rng = map_rng(seed as u64);
+        let grid_width = (point_count as f32).sqrt().floor().max(1.0);
         Self {
             kind,
             bumps: map_random_i32(&mut rng, 1..=6),
             start_angle: map_random_f32(&mut rng, 0.0..2.0 * PI),
             dip_angle: map_random_f32(&mut rng, 0.0..2.0 * PI),
             dip_width: map_random_f32(&mut rng, 0.2..0.7),
+            perlin_hard_edge_buffer: grid_cells_to_normalized_distance(
+                PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS + PERLIN_SHALLOW_SHELF_CELLS,
+                grid_width,
+            ),
+            perlin_soft_edge_buffer: grid_cells_to_normalized_distance(
+                PERLIN_EDGE_SOFTNESS_CELLS,
+                grid_width,
+            ),
             perlin_noise: make_fractal_noise(seed),
             simplex_noise: OpenSimplex::new(seed),
         }
@@ -55,14 +75,26 @@ impl IslandProfile {
                     (q.x + 1.0) * 128.0,
                     (q.y + 1.0) * 128.0,
                 );
-                c > 0.3 + 0.3 * q.length_squared()
+                let edge_distance = 1.0 - q.x.abs().max(q.y.abs());
+                if edge_distance <= self.perlin_hard_edge_buffer {
+                    return false;
+                }
+                let edge_blend = ((edge_distance - self.perlin_hard_edge_buffer)
+                    / self.perlin_soft_edge_buffer)
+                    .clamp(0.0, 1.0);
+                let edge_bias = (1.0 - edge_blend).powi(2) * PERLIN_EDGE_BIAS;
+                c > PERLIN_BASE_THRESHOLD + PERLIN_RADIAL_FALLOFF * q.length_squared() + edge_bias
             }
             IslandType::Simplex => {
                 let c = sample_simplex_fractal_noise(&self.simplex_noise, q.x * 2.2, q.y * 2.2);
-                c > 0.34 + 0.34 * q.length_squared()
+                c > SIMPLEX_BASE_THRESHOLD + SIMPLEX_RADIAL_FALLOFF * q.length_squared()
             }
         }
     }
+}
+
+fn grid_cells_to_normalized_distance(cells: f32, grid_width: f32) -> f32 {
+    cells * 2.0 / grid_width
 }
 
 #[cfg(test)]

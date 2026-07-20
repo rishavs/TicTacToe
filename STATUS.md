@@ -55,8 +55,8 @@
 - [x] Point count options: 4000, 8000, 16000, 32000
 - [x] View modes include biome and slopes
 - [x] Pan and zoom support
-- [x] Zoomed-out map viewport includes deep-ocean padding around the generated map
-- [x] Wide mapgen windows center the square map inside an ocean-backed map area
+- [x] Perlin island shaping leaves about two deep-ocean cells at the generated map edge
+- [x] Wide mapgen windows center the square map inside a neutral gray map area
 - [x] Deterministic generation tests
 - [x] Custom hand-rolled noise internals replaced with the `noise` crate
 - [x] Island profile caches reusable noise generators for much faster generation

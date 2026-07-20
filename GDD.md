@@ -61,7 +61,8 @@ Ocean design:
 - Shallow ocean follows the island coastline roughly, but not exactly.
 - The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf.
 - Shallow/deep ocean are visual and classification states only for now; they do not yet affect movement, combat, resources, or win/loss rules.
-- The map viewport includes deep-ocean breathing room beyond the generated map edge, so shallow ocean does not sit directly against the visible frame.
+- Perlin maps keep land away from the generated map edge with an edge-distance falloff, leaving about two cells of deep-ocean buffer outside the shallow shelf without increasing grid size.
+- Simplex maps keep their current island scale; their shape uses radial threshold constants rather than the Perlin cell-buffer rule.
 
 ## Combat, Rules, And Progression
 
@@ -84,6 +85,6 @@ Before adding gameplay rules, decide whether this project should become:
 
 - Same seed plus same mapgen options should produce the same result.
 - Rendering should remain responsive while inspecting generated maps.
-- Map inspection should start with a generous viewport: maximized desktop window and visible ocean padding at the map edge.
+- Map inspection should start with a generous viewport: maximized desktop window and Perlin maps that leave visible ocean breathing room at the generated map edge.
 - Placeholder scenes should stay simple until they receive real rules.
 - Documentation should describe the current Rust/Macroquad project, not the removed Go/Ebiten version.
