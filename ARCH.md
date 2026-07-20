@@ -7,6 +7,8 @@
 - **Project:** TicTacToe
 - **Language:** Rust 2024
 - **Engine/toolkit:** Macroquad 0.4.15
+- **Procedural noise:** `noise`
+- **Seeded randomness:** Macroquad's owned `macroquad::rand::RandGenerator`
 - **Current focus:** Scene shell plus procedural map-generation viewer
 
 ## Module Layout
@@ -20,7 +22,15 @@ src/
     play.rs            - Play placeholder scene
     battle.rs          - Battle placeholder scene
     settings.rs        - Settings placeholder scene
-    mapgen.rs          - Mapgen viewer, generation model, rendering helpers, tests
+    mapgen.rs          - Mapgen scene state, input, background worker, scene-level tests
+    mapgen/biome.rs    - Biome classification, color interpolation, slope lighting
+    mapgen/generate.rs - Deterministic map generation pipeline and map query methods
+    mapgen/model.rs    - Map data structs: centers, corners, edges, noisy edges, PolyMap
+    mapgen/noise.rs    - Island profiles and cached procedural noise sampling
+    mapgen/random.rs   - Macroquad owned RNG wrappers for deterministic generation
+    mapgen/render.rs   - Mapgen drawing, sidebar UI, histograms, map edge/polygon rendering
+    mapgen/seed.rs     - Seed parsing, random seed text, seed input helpers
+    mapgen/tests.rs    - Mapgen unit tests
 ```
 
 There are no active Go/Ebiten modules and no LeanSpec-managed specs in the current checkout.
@@ -52,15 +62,20 @@ Macroquad window setup
 
 ## Mapgen Scene
 
-`src/scenes/mapgen.rs` is currently the largest module. It contains both viewer UI and generation logic:
+`src/scenes/mapgen.rs` contains scene state, input, and background generation coordination. Child modules under `src/scenes/mapgen/` hold the deterministic model, generation pipeline, rendering, biome/color math, noise, RNG, seed helpers, and tests.
 
-- `MapgenScene` stores selected seed, island type, point type, point count, view mode, generated map, pan, zoom, and status.
-- `PolyMap` stores generated centers, corners, edges, noisy edges, and histogram data.
+- `MapgenScene` stores selected seed, island type, point type, point count, view mode, current generated map, pending generation job, pan, zoom, and status.
+- `PolyMap` stores generated centers, corners, edges, noisy edges, and histogram data in `mapgen/model.rs`.
 - `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer.
 - `IslandType` supports radial, perlin, and simplex shaping.
 - `PointType` currently supports square point layout.
 - `ViewMode` supports biome and slope-style debug views.
-- `PmPrng`, noise helpers, seed parsing, pan/zoom math, biome classification, graph linking, and rendering helpers live in the same file.
+- Seed parsing lives in `mapgen/seed.rs`; pan/zoom math remains in the scene shell; biome classification lives in `mapgen/biome.rs`; graph generation lives in `mapgen/generate.rs`.
+- Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps.
+- Regeneration runs on a background worker thread and sends the finished `PolyMap` back to the scene through a channel. The previous map remains visible while a new map is building.
+- `noise` supplies Perlin/fBm and OpenSimplex noise; small local wrappers normalize output into the mapgen-friendly `0.0..=1.0` range.
+- `IslandProfile` caches reusable noise generators so map sampling does not recreate noise objects per corner.
+- `macroquad::rand::RandGenerator` supplies deterministic seeded randomness through small local wrapper functions. Mapgen uses owned RNG instances instead of Macroquad's global RNG state.
 
 The scene uses a narrow static cache:
 
@@ -74,10 +89,11 @@ This is intentional for the current Macroquad scene model: the mapgen scene keep
 
 ```text
 debug env / UI controls
-  -> MapgenScene::new or Regenerate
-  -> PolyMap::generate(seed, island type, point type, point count)
+  -> MapgenScene::regenerate
+  -> background worker calls PolyMap::generate(seed, island type, point type, point count)
   -> graph construction, elevation, moisture, rivers, biomes, noisy edges
-  -> draw visible polygons and overlays through Macroquad
+  -> worker sends completed PolyMap over channel
+  -> render module draws visible polygons and overlays through Macroquad
 ```
 
 Generation is deterministic for the same seed and options. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, and drainage behavior.
@@ -116,7 +132,7 @@ Screenshot paths should stay in ignored capture folders unless the user explicit
 
 ## Boundaries
 
-- Rendering and UI currently depend directly on Macroquad.
-- Mapgen logic is embedded in `src/scenes/mapgen.rs`, but many helpers are pure and unit-tested.
-- If mapgen grows further, the likely next architectural improvement is to split generation/model code from scene drawing into a dedicated module.
+- Rendering and UI depend directly on Macroquad and stay in `src/scenes/mapgen/render.rs`.
+- Mapgen generation logic is separated from the scene shell and remains pure/unit-tested where practical.
+- If mapgen grows further, the likely next architectural improvement is to move scene-agnostic modules out of `src/scenes/` into a game/domain-level mapgen package.
 - `target/`, `temp/`, and capture folders are local output and should not be committed.

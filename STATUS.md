@@ -7,6 +7,8 @@
 - [x] Rust project initialized with `Cargo.toml` and `Cargo.lock`
 - [x] Package renamed to `tictactoe`
 - [x] Macroquad dependency added (`macroquad = "0.4.15"`)
+- [x] Procedural noise uses the `noise` crate
+- [x] Deterministic map randomness uses Macroquad's owned `macroquad::rand::RandGenerator`
 - [x] Rust 2024 edition configured
 - [x] `target/`, `temp/`, and capture folders ignored by git
 - [x] LeanSpec removed from the active workflow
@@ -40,7 +42,11 @@
 ## Mapgen Scene
 
 - [x] `src/scenes/mapgen.rs` contains the active map-generation viewer
+- [x] Mapgen rendering split into `src/scenes/mapgen/render.rs`
+- [x] Mapgen model, generation, biome, noise, RNG, seed, and tests split into focused child modules
+- [x] `src/scenes/mapgen.rs` slimmed to the scene shell and worker coordination
 - [x] Scene state cached with `OnceLock<Mutex<MapgenScene>>`
+- [x] Map regeneration runs on a background worker so the Macroquad window keeps repainting
 - [x] Seed input and random seed generation
 - [x] Debug environment controls renamed to `TICTACTOE_MAPGEN_*`
 - [x] Island shape options: radial, perlin, simplex
@@ -49,6 +55,10 @@
 - [x] View modes include biome and slopes
 - [x] Pan and zoom support
 - [x] Deterministic generation tests
+- [x] Custom hand-rolled noise internals replaced with the `noise` crate
+- [x] Island profile caches reusable noise generators for much faster generation
+- [x] Custom hand-rolled PRNG replaced with Macroquad's owned RNG
+- [x] Renderer iterates center borders and edges directly instead of repeatedly searching neighbor edges
 - [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, and drainage-loop behavior
 
 ## Removed / Stale Items
@@ -62,6 +72,6 @@
 ## Active / Next Up
 
 - [ ] Decide whether TicTacToe is a literal game direction, a temporary rename, or a placeholder for a future rename
-- [ ] Decide whether mapgen logic should be split out of `src/scenes/mapgen.rs`
+- [ ] Decide whether scene-agnostic mapgen modules should move out of `src/scenes/` into a domain-level package
 - [ ] Add real Play/Battle/Settings behavior when the game direction is confirmed
 - [ ] Add visual QA captures for scene/layout changes when useful

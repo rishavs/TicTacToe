@@ -1,0 +1,525 @@
+use super::generate::generate_square_points;
+use super::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+fn quantize(value: f32) -> i32 {
+    (value * 10_000.0).round() as i32
+}
+
+fn hash_point(hasher: &mut DefaultHasher, point: Vec2) {
+    quantize(point.x).hash(hasher);
+    quantize(point.y).hash(hasher);
+}
+
+fn map_fingerprint(map: &PolyMap) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    map.centers.len().hash(&mut hasher);
+    map.corners.len().hash(&mut hasher);
+    map.edges.len().hash(&mut hasher);
+    for center in &map.centers {
+        center.index.hash(&mut hasher);
+        hash_point(&mut hasher, center.point);
+        center.water.hash(&mut hasher);
+        center.ocean.hash(&mut hasher);
+        center.coast.hash(&mut hasher);
+        center.border.hash(&mut hasher);
+        center.biome.hash(&mut hasher);
+        quantize(center.elevation).hash(&mut hasher);
+        quantize(center.moisture).hash(&mut hasher);
+        center.neighbors.len().hash(&mut hasher);
+        center.borders.len().hash(&mut hasher);
+        center.corners.len().hash(&mut hasher);
+    }
+    for edge in &map.edges {
+        edge.index.hash(&mut hasher);
+        edge.d0.hash(&mut hasher);
+        edge.d1.hash(&mut hasher);
+        edge.v0.hash(&mut hasher);
+        edge.v1.hash(&mut hasher);
+        edge.river.hash(&mut hasher);
+        hash_point(&mut hasher, edge.midpoint);
+    }
+    for noisy_edge in &map.noisy_edges {
+        noisy_edge.path0.as_ref().map(Vec::len).hash(&mut hasher);
+        noisy_edge.path1.as_ref().map(Vec::len).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+#[test]
+fn default_seed_matches_swf_demo() {
+    assert_eq!(parse_seed(DEFAULT_SEED_TEXT), (85882, 8));
+}
+
+#[test]
+fn default_scene_configuration_is_trimmed() {
+    assert_eq!(DEFAULT_ISLAND_TYPE, IslandType::Perlin);
+    assert_eq!(DEFAULT_POINT_TYPE, PointType::Square);
+    assert_eq!(DEFAULT_POINT_COUNT, 4000);
+    assert_eq!(DEFAULT_VIEW_MODE, ViewMode::Biome);
+}
+
+#[test]
+fn debug_env_accepts_only_remaining_controls() {
+    assert_eq!(
+        IslandType::from_debug_env("RADIAL"),
+        Some(IslandType::Radial)
+    );
+    assert_eq!(
+        IslandType::from_debug_env("perlin"),
+        Some(IslandType::Perlin)
+    );
+    assert_eq!(
+        IslandType::from_debug_env("simplex"),
+        Some(IslandType::Simplex)
+    );
+    assert_eq!(PointType::from_debug_env("Square"), Some(PointType::Square));
+    assert_eq!(ViewMode::from_debug_env("biomes"), Some(ViewMode::Biome));
+    assert_eq!(
+        ViewMode::from_debug_env("2D slopes"),
+        Some(ViewMode::Slopes)
+    );
+}
+
+#[test]
+fn seed_input_accepts_demo_seed_characters() {
+    assert!("12345-6_Az".chars().all(is_seed_char));
+    assert!(!"12.34".chars().all(is_seed_char));
+}
+
+#[test]
+fn seed_input_replaces_existing_seed_on_first_typed_character() {
+    let mut text = DEFAULT_SEED_TEXT.to_string();
+    let mut replace_on_type = true;
+
+    for ch in "12345-6".chars() {
+        assert!(push_seed_char(&mut text, &mut replace_on_type, ch));
+    }
+
+    assert_eq!(text, "12345-6");
+    assert!(!replace_on_type);
+}
+
+#[test]
+fn seed_input_hitbox_matches_demo_panel_position() {
+    let sidebar = Rect::new(768.0, 0.0, 256.0, 768.0);
+    let field = seed_field_rect(sidebar);
+
+    assert!(field.contains(vec2(848.0, 29.0)));
+    assert!(field.contains(vec2(912.0, 51.0)));
+    assert!(!field.contains(vec2(846.0, 29.0)));
+}
+
+#[test]
+fn square_point_selector_uses_floor_sqrt_grid_counts() {
+    assert_eq!(generate_square_points(4000).len(), 63 * 63);
+    assert_eq!(generate_square_points(8000).len(), 89 * 89);
+    assert_eq!(generate_square_points(16000).len(), 126 * 126);
+    assert_eq!(generate_square_points(32000).len(), 178 * 178);
+}
+
+#[test]
+fn map_generation_builds_graph_with_land_and_water() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(!map.centers.is_empty());
+    assert!(!map.corners.is_empty());
+    assert!(!map.edges.is_empty());
+    assert!(map.centers.iter().any(|center| center.ocean));
+    assert!(map.centers.iter().any(|center| !center.water));
+}
+
+#[test]
+fn island_shape_buttons_change_inside_function() {
+    let radial = IslandProfile::new(IslandType::Radial, 85882);
+    let perlin = IslandProfile::new(IslandType::Perlin, 85882);
+
+    let sample_points = [
+        vec2(-0.75, -0.75),
+        vec2(-0.55, -0.2),
+        vec2(-0.25, 0.35),
+        vec2(0.15, -0.65),
+        vec2(0.45, 0.45),
+        vec2(0.75, 0.1),
+    ];
+
+    assert!(
+        sample_points
+            .into_iter()
+            .any(|point| radial.inside(point) != perlin.inside(point))
+    );
+}
+
+#[test]
+fn demo_control_labels_match_reference() {
+    let island_labels: Vec<_> = IslandType::ALL.iter().map(|kind| kind.label()).collect();
+    let point_labels: Vec<_> = PointType::ALL.iter().map(|kind| kind.label()).collect();
+    let view_labels: Vec<_> = ViewMode::ALL.iter().map(|mode| mode.label()).collect();
+
+    assert_eq!(island_labels, ["Radial", "Perlin", "Simplex"]);
+    assert_eq!(point_labels, ["Square"]);
+    assert_eq!(view_labels, ["Biomes", "2D slopes"]);
+    assert_eq!(&POINT_COUNTS[..], &[4000, 8000, 16000, 32000]);
+}
+
+#[test]
+fn island_button_positions_cover_all_island_shapes() {
+    assert_eq!(island_button_x_positions().len(), IslandType::ALL.len());
+}
+
+#[test]
+fn removed_controls_are_not_accepted_from_debug_env() {
+    assert_eq!(IslandType::from_debug_env("square"), None);
+    assert_eq!(IslandType::from_debug_env("blob"), None);
+    assert_eq!(PointType::from_debug_env("random"), None);
+    assert_eq!(PointType::from_debug_env("relaxed"), None);
+    assert_eq!(PointType::from_debug_env("hex"), None);
+    assert_eq!(ViewMode::from_debug_env("smooth"), None);
+    assert_eq!(ViewMode::from_debug_env("3d"), None);
+    assert_eq!(ViewMode::from_debug_env("elevation"), None);
+    assert_eq!(ViewMode::from_debug_env("moisture"), None);
+    assert_eq!(ViewMode::from_debug_env("polygons"), None);
+    assert_eq!(ViewMode::from_debug_env("watersheds"), None);
+}
+
+#[test]
+fn removed_point_counts_are_not_available() {
+    for removed_count in [500, 1000, 2000] {
+        assert!(!POINT_COUNTS.contains(&removed_count));
+    }
+}
+
+#[test]
+fn map_rng_wrappers_are_deterministic_and_ranged() {
+    let mut first = map_rng(1234);
+    let mut second = map_rng(1234);
+
+    assert_eq!(map_random_u32(&mut first), map_random_u32(&mut second));
+    assert_eq!(
+        map_random_i32(&mut first, 1..=6),
+        map_random_i32(&mut second, 1..=6)
+    );
+
+    for _ in 0..100 {
+        let value = map_random_f32(&mut first, 0.2..0.8);
+        assert!((0.2..0.8).contains(&value));
+    }
+}
+
+#[test]
+fn library_noise_wrappers_are_deterministic_and_seeded() {
+    let a = fractal_noise_2d(12.5, 37.25, 42);
+    let b = fractal_noise_2d(12.5, 37.25, 42);
+    let c = fractal_noise_2d(12.5, 37.25, 43);
+
+    assert_eq!(a, b);
+    assert_ne!(a, c);
+    assert!((0.0..=1.0).contains(&a));
+
+    let simplex_a = simplex_fractal_noise_2d(0.2, -0.4, 42);
+    let simplex_b = simplex_fractal_noise_2d(0.2, -0.4, 42);
+    let simplex_c = simplex_fractal_noise_2d(0.2, -0.4, 43);
+
+    assert_eq!(simplex_a, simplex_b);
+    assert_ne!(simplex_a, simplex_c);
+    assert!((0.0..=1.0).contains(&simplex_a));
+}
+
+#[test]
+fn zoom_source_rect_crops_around_pan() {
+    let rect = map_source_rect(vec2(64.0, -32.0), 2.0);
+
+    assert_eq!(rect.w, 300.0);
+    assert_eq!(rect.h, 300.0);
+    assert_eq!(rect.x, 214.0);
+    assert_eq!(rect.y, 118.0);
+}
+
+#[test]
+fn pan_is_clamped_to_visible_map_bounds() {
+    let pan = clamp_pan(vec2(999.0, -999.0), 4.0);
+
+    assert_eq!(pan, vec2(225.0, -225.0));
+}
+
+#[test]
+fn square_4000_generation_completes() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert_eq!(map.centers.len(), 63 * 63);
+    assert!(map.centers.iter().any(|center| !center.water));
+}
+
+#[test]
+fn map_generation_is_deterministic_for_same_seed() {
+    let first = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let second = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert_eq!(map_fingerprint(&first), map_fingerprint(&second));
+}
+
+#[test]
+fn changing_shape_seed_changes_generated_map() {
+    let first = generate_map("85882-8", IslandType::Perlin, PointType::Square, 4000);
+    let second = generate_map("85883-8", IslandType::Perlin, PointType::Square, 4000);
+
+    assert_ne!(map_fingerprint(&first), map_fingerprint(&second));
+}
+
+#[test]
+fn changing_seed_variant_changes_generated_map() {
+    let first = generate_map("85882-8", IslandType::Perlin, PointType::Square, 4000);
+    let second = generate_map("85882-9", IslandType::Perlin, PointType::Square, 4000);
+
+    assert_ne!(map_fingerprint(&first), map_fingerprint(&second));
+}
+
+#[test]
+fn radial_square_generation_builds_valid_island() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Radial,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(map.centers.iter().any(|center| center.ocean));
+    assert!(map.centers.iter().any(|center| !center.water));
+    assert!(map.centers.iter().any(|center| center.coast));
+    assert!(map.edges.iter().any(|edge| edge.river > 0));
+}
+
+#[test]
+fn simplex_square_generation_builds_valid_island() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Simplex,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(map.centers.iter().any(|center| center.ocean));
+    assert!(map.centers.iter().any(|center| !center.water));
+    assert!(map.centers.iter().any(|center| center.coast));
+    assert!(map.edges.iter().any(|edge| edge.river > 0));
+}
+
+#[test]
+fn simplex_is_deterministic_for_same_seed() {
+    let first = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Simplex,
+        PointType::Square,
+        4000,
+    );
+    let second = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Simplex,
+        PointType::Square,
+        4000,
+    );
+
+    assert_eq!(map_fingerprint(&first), map_fingerprint(&second));
+}
+
+#[test]
+fn simplex_generates_different_map_from_perlin() {
+    let simplex = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Simplex,
+        PointType::Square,
+        4000,
+    );
+    let perlin = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert_ne!(map_fingerprint(&simplex), map_fingerprint(&perlin));
+}
+
+#[test]
+fn square_point_regions_remain_axis_aligned_cells() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    for center in &map.centers {
+        assert_eq!(center.corners.len(), 4);
+        for &edge_id in &center.borders {
+            let edge = &map.edges[edge_id];
+            let (Some(v0), Some(v1)) = (edge.v0, edge.v1) else {
+                panic!("square edge must have two corners");
+            };
+            let a = map.corners[v0].point;
+            let b = map.corners[v1].point;
+            assert!(
+                (a.x - b.x).abs() < 0.001 || (a.y - b.y).abs() < 0.001,
+                "square edge was not axis aligned: {a:?} -> {b:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn noisy_edges_are_built_for_interior_edges() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    let interior_edge = map
+        .edges
+        .iter()
+        .find(|edge| {
+            edge.d0.is_some() && edge.d1.is_some() && edge.v0.is_some() && edge.v1.is_some()
+        })
+        .expect("square map should have interior edges");
+    let noisy_edge = &map.noisy_edges[interior_edge.index];
+    let path0 = noisy_edge.path0.as_ref().expect("path0 should exist");
+    let path1 = noisy_edge.path1.as_ref().expect("path1 should exist");
+
+    assert_eq!(
+        path0.first().copied(),
+        interior_edge.v0.map(|v| map.corners[v].point)
+    );
+    assert_eq!(
+        path1.first().copied(),
+        interior_edge.v1.map(|v| map.corners[v].point)
+    );
+    assert_eq!(path0.last().copied(), Some(interior_edge.midpoint));
+    assert_eq!(path1.last().copied(), Some(interior_edge.midpoint));
+}
+
+#[test]
+fn graph_links_are_bidirectional() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    for center in &map.centers {
+        for &neighbor in &center.neighbors {
+            assert!(
+                map.centers[neighbor].neighbors.contains(&center.index),
+                "neighbor link was not reciprocal"
+            );
+        }
+        for &corner_id in &center.corners {
+            assert!(
+                map.corners[corner_id].touches.contains(&center.index),
+                "corner touch did not include center"
+            );
+        }
+        for &edge_id in &center.borders {
+            let edge = &map.edges[edge_id];
+            assert!(
+                edge.d0 == Some(center.index) || edge.d1 == Some(center.index),
+                "border edge did not reference center"
+            );
+        }
+    }
+
+    for corner in &map.corners {
+        for &adjacent in &corner.adjacent {
+            assert!(
+                map.corners[adjacent].adjacent.contains(&corner.index),
+                "corner adjacency was not reciprocal"
+            );
+        }
+        for &edge_id in &corner.protrudes {
+            let edge = &map.edges[edge_id];
+            assert!(
+                edge.v0 == Some(corner.index) || edge.v1 == Some(corner.index),
+                "protruding edge did not reference corner"
+            );
+        }
+    }
+}
+
+#[test]
+fn generated_elevation_and_moisture_stay_normalized() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    for center in &map.centers {
+        assert!((0.0..=1.0).contains(&center.elevation));
+        assert!((0.0..=1.0).contains(&center.moisture));
+    }
+    for corner in &map.corners {
+        assert!((0.0..=1.0).contains(&corner.elevation));
+        assert!((0.0..=1.0).contains(&corner.moisture));
+        if corner.border {
+            assert_eq!(corner.elevation, 0.0);
+        }
+    }
+}
+
+#[test]
+fn biome_categories_match_water_state() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    for center in &map.centers {
+        if center.ocean {
+            assert_eq!(center.biome, "OCEAN");
+        } else if center.water {
+            assert!(matches!(center.biome, "MARSH" | "ICE" | "LAKE"));
+        } else if center.coast {
+            assert_eq!(center.biome, "BEACH");
+        } else {
+            assert!(!matches!(center.biome, "OCEAN" | "MARSH" | "ICE" | "LAKE"));
+        }
+    }
+}
+
+#[test]
+fn square_point_type_generates_without_drainage_loops() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(map.edges.iter().any(|edge| edge.river > 0));
+    assert!(map.centers.iter().any(|center| center.coast));
+}

@@ -1,0 +1,836 @@
+use super::biome::{biome_color, calculate_lighting, get_biome, interpolate_color};
+use super::*;
+use std::collections::{HashMap, VecDeque};
+
+pub(super) fn generate_map(
+    seed_text: &str,
+    island_type: IslandType,
+    point_type: PointType,
+    point_count: usize,
+) -> PolyMap {
+    PolyMap::generate(seed_text, island_type, point_type, point_count)
+}
+impl PolyMap {
+    fn generate(
+        seed_text: &str,
+        island_type: IslandType,
+        point_type: PointType,
+        point_count: usize,
+    ) -> Self {
+        let (shape_seed, variant) = parse_seed(seed_text);
+        let island_shape = IslandProfile::new(island_type, shape_seed);
+        let points = select_points(point_type, point_count, shape_seed);
+        let mut map = Self::from_points(points, point_count, variant, island_shape);
+        map.assign_corner_elevations();
+        map.assign_ocean_coast_and_land();
+        map.redistribute_elevations();
+        map.assign_polygon_elevations();
+        map.calculate_downslopes();
+        map.calculate_watersheds();
+        map.create_rivers();
+        map.assign_corner_moisture();
+        map.redistribute_moisture();
+        map.assign_polygon_moisture();
+        map.assign_biomes();
+        map.create_center_watersheds();
+        map.build_noisy_edges();
+        map
+    }
+
+    fn from_points(
+        points: Vec<Vec2>,
+        point_count: usize,
+        variant: u32,
+        island_shape: IslandProfile,
+    ) -> Self {
+        let regions = build_regions(point_count);
+        let mut centers: Vec<Center> = points
+            .iter()
+            .enumerate()
+            .map(|(index, &point)| Center {
+                index,
+                point,
+                water: false,
+                ocean: false,
+                coast: false,
+                border: false,
+                biome: "OCEAN",
+                elevation: 0.0,
+                moisture: 0.0,
+                neighbors: Vec::new(),
+                borders: Vec::new(),
+                corners: Vec::new(),
+            })
+            .collect();
+        let mut corners: Vec<Corner> = Vec::new();
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut corner_lookup: HashMap<(i32, i32), usize> = HashMap::new();
+        let mut edge_by_corners: HashMap<(usize, usize), usize> = HashMap::new();
+
+        for (center_id, region) in regions.iter().enumerate() {
+            if region.len() < 3 {
+                continue;
+            }
+            let mut corner_ids = Vec::with_capacity(region.len());
+            for &point in region {
+                let corner_id = make_corner(&mut corners, &mut corner_lookup, point);
+                push_unique(&mut corners[corner_id].touches, center_id);
+                corner_ids.push(corner_id);
+            }
+            centers[center_id].corners = corner_ids.clone();
+
+            for i in 0..corner_ids.len() {
+                let v0 = corner_ids[i];
+                let v1 = corner_ids[(i + 1) % corner_ids.len()];
+                if v0 == v1 {
+                    continue;
+                }
+                let key = sorted_pair(v0, v1);
+                let edge_id = if let Some(&edge_id) = edge_by_corners.get(&key) {
+                    if edges[edge_id].d0 != Some(center_id) && edges[edge_id].d1.is_none() {
+                        edges[edge_id].d1 = Some(center_id);
+                    }
+                    edge_id
+                } else {
+                    let edge_id = edges.len();
+                    edge_by_corners.insert(key, edge_id);
+                    edges.push(Edge {
+                        index: edge_id,
+                        d0: Some(center_id),
+                        d1: None,
+                        v0: Some(v0),
+                        v1: Some(v1),
+                        midpoint: (corners[v0].point + corners[v1].point) * 0.5,
+                        river: 0,
+                    });
+                    push_unique(&mut corners[v0].adjacent, v1);
+                    push_unique(&mut corners[v1].adjacent, v0);
+                    push_unique(&mut corners[v0].protrudes, edge_id);
+                    push_unique(&mut corners[v1].protrudes, edge_id);
+                    edge_id
+                };
+                push_unique(&mut centers[center_id].borders, edge_id);
+            }
+        }
+
+        for edge in &edges {
+            if let (Some(d0), Some(d1)) = (edge.d0, edge.d1) {
+                push_unique(&mut centers[d0].neighbors, d1);
+                push_unique(&mut centers[d1].neighbors, d0);
+            }
+        }
+
+        improve_corners(&mut centers, &mut corners, &mut edges);
+
+        Self {
+            map_random: map_rng(variant as u64),
+            island_shape,
+            centers,
+            corners,
+            edges,
+            noisy_edges: Vec::new(),
+            center_watersheds: Vec::new(),
+            edge_by_corners,
+        }
+    }
+
+    fn assign_corner_elevations(&mut self) {
+        let mut queue = VecDeque::new();
+        for corner in &mut self.corners {
+            corner.water = !self.island_shape.inside(vec2(
+                2.0 * (corner.point.x / MAP_SIZE - 0.5),
+                2.0 * (corner.point.y / MAP_SIZE - 0.5),
+            ));
+            if corner.border {
+                corner.elevation = 0.0;
+                queue.push_back(corner.index);
+            } else {
+                corner.elevation = f32::INFINITY;
+            }
+        }
+
+        while let Some(q) = queue.pop_front() {
+            let adjacent = self.corners[q].adjacent.clone();
+            for s in adjacent {
+                let mut new_elevation = 0.01 + self.corners[q].elevation;
+                if !self.corners[q].water && !self.corners[s].water {
+                    new_elevation += 1.0;
+                    new_elevation += map_random_f32(&mut self.map_random, 0.0..1.0);
+                }
+                if new_elevation < self.corners[s].elevation {
+                    self.corners[s].elevation = new_elevation;
+                    queue.push_back(s);
+                }
+            }
+        }
+    }
+
+    fn assign_ocean_coast_and_land(&mut self) {
+        let mut queue = VecDeque::new();
+        for center in &mut self.centers {
+            let mut num_water = 0usize;
+            for &corner_id in &center.corners {
+                let corner = &mut self.corners[corner_id];
+                if corner.border {
+                    center.border = true;
+                    center.ocean = true;
+                    corner.water = true;
+                    queue.push_back(center.index);
+                }
+                if corner.water {
+                    num_water += 1;
+                }
+            }
+            center.water = center.ocean
+                || (!center.corners.is_empty()
+                    && num_water as f32 >= center.corners.len() as f32 * LAKE_THRESHOLD);
+        }
+
+        while let Some(p) = queue.pop_front() {
+            let neighbors = self.centers[p].neighbors.clone();
+            for r in neighbors {
+                if self.centers[r].water && !self.centers[r].ocean {
+                    self.centers[r].ocean = true;
+                    queue.push_back(r);
+                }
+            }
+        }
+
+        for p in 0..self.centers.len() {
+            let mut num_ocean = 0;
+            let mut num_land = 0;
+            for &r in &self.centers[p].neighbors {
+                if self.centers[r].ocean {
+                    num_ocean += 1;
+                }
+                if !self.centers[r].water {
+                    num_land += 1;
+                }
+            }
+            self.centers[p].coast = num_ocean > 0 && num_land > 0;
+        }
+
+        for q in 0..self.corners.len() {
+            let mut num_ocean = 0;
+            let mut num_land = 0;
+            for &p in &self.corners[q].touches {
+                if self.centers[p].ocean {
+                    num_ocean += 1;
+                }
+                if !self.centers[p].water {
+                    num_land += 1;
+                }
+            }
+            let touches = self.corners[q].touches.len();
+            self.corners[q].ocean = touches > 0 && num_ocean == touches;
+            self.corners[q].coast = num_ocean > 0 && num_land > 0;
+            self.corners[q].water =
+                self.corners[q].border || ((num_land != touches) && !self.corners[q].coast);
+        }
+    }
+
+    fn redistribute_elevations(&mut self) {
+        let mut locations: Vec<usize> = self
+            .corners
+            .iter()
+            .filter(|corner| !corner.ocean && !corner.coast)
+            .map(|corner| corner.index)
+            .collect();
+        locations.sort_by(|&a, &b| {
+            self.corners[a]
+                .elevation
+                .total_cmp(&self.corners[b].elevation)
+        });
+        if locations.len() > 1 {
+            let scale_factor = 1.1_f32;
+            for (i, &corner_id) in locations.iter().enumerate() {
+                let y = i as f32 / (locations.len() - 1) as f32;
+                let x = scale_factor.sqrt() - (scale_factor * (1.0 - y)).sqrt();
+                self.corners[corner_id].elevation = x.min(1.0);
+            }
+        }
+        for corner in &mut self.corners {
+            if corner.ocean || corner.coast {
+                corner.elevation = 0.0;
+            }
+        }
+    }
+
+    fn assign_polygon_elevations(&mut self) {
+        for center in &mut self.centers {
+            center.elevation = average(
+                center
+                    .corners
+                    .iter()
+                    .map(|&corner_id| self.corners[corner_id].elevation),
+            );
+        }
+    }
+
+    fn calculate_downslopes(&mut self) {
+        for q in 0..self.corners.len() {
+            let mut r = q;
+            for &s in &self.corners[q].adjacent {
+                if self.corners[s].elevation <= self.corners[r].elevation {
+                    r = s;
+                }
+            }
+            self.corners[q].downslope = r;
+        }
+    }
+
+    fn calculate_watersheds(&mut self) {
+        for q in 0..self.corners.len() {
+            self.corners[q].watershed = q;
+            if !self.corners[q].ocean && !self.corners[q].coast {
+                self.corners[q].watershed = self.corners[q].downslope;
+            }
+            self.corners[q].watershed_size = 0;
+        }
+
+        for _ in 0..100 {
+            let mut changed = false;
+            for q in 0..self.corners.len() {
+                let watershed = self.corners[q].watershed;
+                if !self.corners[q].ocean
+                    && !self.corners[q].coast
+                    && !self.corners[watershed].coast
+                {
+                    let r = self.corners[self.corners[q].downslope].watershed;
+                    if !self.corners[r].ocean {
+                        self.corners[q].watershed = r;
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        for q in 0..self.corners.len() {
+            let watershed = self.corners[q].watershed;
+            self.corners[watershed].watershed_size += 1;
+        }
+    }
+
+    fn create_rivers(&mut self) {
+        for _ in 0..(MAP_SIZE as usize / 2) {
+            if self.corners.is_empty() {
+                return;
+            }
+            let mut q =
+                map_random_i32(&mut self.map_random, 0..=(self.corners.len() as i32 - 1)) as usize;
+            if self.corners[q].ocean
+                || self.corners[q].elevation < 0.3
+                || self.corners[q].elevation > 0.9
+            {
+                continue;
+            }
+            let mut visited = vec![false; self.corners.len()];
+            while !self.corners[q].coast {
+                if visited[q] {
+                    break;
+                }
+                visited[q] = true;
+                let downslope = self.corners[q].downslope;
+                if q == downslope {
+                    break;
+                }
+                if let Some(edge_id) = self.lookup_edge_from_corner(q, downslope) {
+                    self.edges[edge_id].river += 1;
+                    self.corners[q].river += 1;
+                    self.corners[downslope].river += 1;
+                }
+                q = downslope;
+            }
+        }
+    }
+
+    fn lookup_edge_from_corner(&self, q: usize, s: usize) -> Option<usize> {
+        self.edge_by_corners.get(&sorted_pair(q, s)).copied()
+    }
+
+    fn assign_corner_moisture(&mut self) {
+        let mut queue = VecDeque::new();
+        for q in 0..self.corners.len() {
+            if (self.corners[q].water || self.corners[q].river > 0) && !self.corners[q].ocean {
+                self.corners[q].moisture = if self.corners[q].river > 0 {
+                    (0.2 * self.corners[q].river as f32).min(3.0)
+                } else {
+                    1.0
+                };
+                queue.push_back(q);
+            } else {
+                self.corners[q].moisture = 0.0;
+            }
+        }
+
+        while let Some(q) = queue.pop_front() {
+            let adjacent = self.corners[q].adjacent.clone();
+            for r in adjacent {
+                let new_moisture = self.corners[q].moisture * 0.9;
+                if new_moisture > self.corners[r].moisture {
+                    self.corners[r].moisture = new_moisture;
+                    queue.push_back(r);
+                }
+            }
+        }
+
+        for corner in &mut self.corners {
+            if corner.ocean || corner.coast {
+                corner.moisture = 1.0;
+            }
+        }
+    }
+
+    fn redistribute_moisture(&mut self) {
+        let mut locations: Vec<usize> = self
+            .corners
+            .iter()
+            .filter(|corner| !corner.ocean && !corner.coast)
+            .map(|corner| corner.index)
+            .collect();
+        locations.sort_by(|&a, &b| {
+            self.corners[a]
+                .moisture
+                .total_cmp(&self.corners[b].moisture)
+        });
+        if locations.len() > 1 {
+            for (i, &corner_id) in locations.iter().enumerate() {
+                self.corners[corner_id].moisture = i as f32 / (locations.len() - 1) as f32;
+            }
+        }
+    }
+
+    fn assign_polygon_moisture(&mut self) {
+        for center in &mut self.centers {
+            center.moisture = average(center.corners.iter().map(|&corner_id| {
+                self.corners[corner_id].moisture = self.corners[corner_id].moisture.min(1.0);
+                self.corners[corner_id].moisture
+            }));
+        }
+    }
+
+    fn assign_biomes(&mut self) {
+        for center in &mut self.centers {
+            center.biome = get_biome(center);
+        }
+    }
+
+    fn create_center_watersheds(&mut self) {
+        self.center_watersheds = vec![None; self.centers.len()];
+        for center in &self.centers {
+            let mut lowest: Option<usize> = None;
+            for &corner_id in &center.corners {
+                if lowest
+                    .map(|candidate| {
+                        self.corners[corner_id].elevation < self.corners[candidate].elevation
+                    })
+                    .unwrap_or(true)
+                {
+                    lowest = Some(corner_id);
+                }
+            }
+            self.center_watersheds[center.index] =
+                lowest.map(|corner_id| self.corners[corner_id].watershed);
+        }
+    }
+
+    fn build_noisy_edges(&mut self) {
+        self.noisy_edges = vec![NoisyEdge::default(); self.edges.len()];
+        for center in &self.centers {
+            for &edge_id in &center.borders {
+                let edge = &self.edges[edge_id];
+                let (Some(d0), Some(d1), Some(v0), Some(v1)) = (edge.d0, edge.d1, edge.v0, edge.v1)
+                else {
+                    continue;
+                };
+                if self.noisy_edges[edge.index].path0.is_some() {
+                    continue;
+                }
+
+                let f = 0.5;
+                let v0_point = self.corners[v0].point;
+                let v1_point = self.corners[v1].point;
+                let d0_point = self.centers[d0].point;
+                let d1_point = self.centers[d1].point;
+                let t = flash_interpolate(v0_point, d0_point, f);
+                let q = flash_interpolate(v0_point, d1_point, f);
+                let r = flash_interpolate(v1_point, d0_point, f);
+                let s = flash_interpolate(v1_point, d1_point, f);
+
+                let mut min_length = 10.0;
+                if self.centers[d0].biome != self.centers[d1].biome {
+                    min_length = 3.0;
+                }
+                if self.centers[d0].ocean && self.centers[d1].ocean {
+                    min_length = 100.0;
+                }
+                if self.centers[d0].coast || self.centers[d1].coast || edge.river > 0 {
+                    min_length = 1.0;
+                }
+
+                self.noisy_edges[edge.index].path0 = Some(build_noisy_line_segments(
+                    &mut self.map_random,
+                    v0_point,
+                    t,
+                    edge.midpoint,
+                    q,
+                    min_length,
+                ));
+                self.noisy_edges[edge.index].path1 = Some(build_noisy_line_segments(
+                    &mut self.map_random,
+                    v1_point,
+                    r,
+                    edge.midpoint,
+                    s,
+                    min_length,
+                ));
+            }
+        }
+    }
+
+    pub(super) fn triangle_color(&self, mode: ViewMode, center_id: usize, edge_id: usize) -> u32 {
+        let center = &self.centers[center_id];
+        let base = biome_color(center.biome);
+        match mode {
+            ViewMode::Biome => base,
+            ViewMode::Slopes => self.color_with_slope(base, center_id, edge_id),
+        }
+    }
+
+    fn color_with_slope(&self, color: u32, center_id: usize, edge_id: usize) -> u32 {
+        let edge = &self.edges[edge_id];
+        let center = &self.centers[center_id];
+        let (Some(v0), Some(v1)) = (edge.v0, edge.v1) else {
+            return 0x44447a;
+        };
+        if center.water {
+            return color;
+        }
+        let mut blended = color;
+        if let Some(neighbor) = self.other_center(edge_id, center_id)
+            && center.water == self.centers[neighbor].water
+        {
+            blended = interpolate_color(color, biome_color(self.centers[neighbor].biome), 0.4);
+        }
+
+        let light = calculate_lighting(
+            center.point,
+            center.elevation,
+            self.corners[v0].point,
+            self.corners[v0].elevation,
+            self.corners[v1].point,
+            self.corners[v1].elevation,
+        );
+        let color_low = interpolate_color(blended, 0x333333, 0.7);
+        let color_high = interpolate_color(blended, 0xffffff, 0.3);
+        if light < 0.5 {
+            interpolate_color(color_low, blended, light * 2.0)
+        } else {
+            interpolate_color(blended, color_high, light * 2.0 - 1.0)
+        }
+    }
+
+    fn other_center(&self, edge_id: usize, center_id: usize) -> Option<usize> {
+        let edge = &self.edges[edge_id];
+        if edge.d0 == Some(center_id) {
+            edge.d1
+        } else if edge.d1 == Some(center_id) {
+            edge.d0
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn land_histogram(&self) -> Vec<(u32, f32)> {
+        let mut buckets = [0usize; 4];
+        for center in &self.centers {
+            let bucket = if center.ocean {
+                0
+            } else if center.coast {
+                1
+            } else if center.water {
+                2
+            } else {
+                3
+            };
+            buckets[bucket] += 1;
+        }
+        histogram_pairs(&[0x44447a, 0xa09077, 0x336699, 0x679459], &buckets)
+    }
+
+    pub(super) fn biome_histogram(&self) -> Vec<(u32, f32)> {
+        let biomes = [
+            "BEACH",
+            "LAKE",
+            "ICE",
+            "MARSH",
+            "SNOW",
+            "TUNDRA",
+            "BARE",
+            "SCORCHED",
+            "TAIGA",
+            "SHRUBLAND",
+            "TEMPERATE_DESERT",
+            "TEMPERATE_RAIN_FOREST",
+            "TEMPERATE_DECIDUOUS_FOREST",
+            "GRASSLAND",
+            "SUBTROPICAL_DESERT",
+            "TROPICAL_RAIN_FOREST",
+            "TROPICAL_SEASONAL_FOREST",
+        ];
+        let mut buckets = vec![0usize; biomes.len()];
+        for center in &self.centers {
+            if let Some(index) = biomes.iter().position(|&biome| biome == center.biome) {
+                buckets[index] += 1;
+            }
+        }
+        biomes
+            .iter()
+            .zip(buckets)
+            .map(|(&biome, count)| (biome_color(biome), count as f32))
+            .collect()
+    }
+
+    pub(super) fn elevation_histogram(&self) -> Vec<(u32, f32)> {
+        let mut buckets = [0usize; 10];
+        for center in &self.centers {
+            if !center.ocean {
+                let bucket = (center.elevation * 10.0).floor().clamp(0.0, 9.0) as usize;
+                buckets[bucket] += 1;
+            }
+        }
+        (0..10)
+            .map(|i| {
+                (
+                    interpolate_color(0x679459, 0x88aa55, i as f32 * 0.1),
+                    buckets[i] as f32,
+                )
+            })
+            .collect()
+    }
+
+    pub(super) fn moisture_histogram(&self) -> Vec<(u32, f32)> {
+        let mut buckets = [0usize; 10];
+        for center in &self.centers {
+            if !center.water {
+                let bucket = (center.moisture * 10.0).floor().clamp(0.0, 9.0) as usize;
+                buckets[bucket] += 1;
+            }
+        }
+        (0..10)
+            .map(|i| {
+                (
+                    interpolate_color(0xa09077, 0x225588, i as f32 * 0.1),
+                    buckets[i] as f32,
+                )
+            })
+            .collect()
+    }
+}
+
+fn select_points(point_type: PointType, point_count: usize, _seed: u32) -> Vec<Vec2> {
+    match point_type {
+        PointType::Square => generate_square_points(point_count),
+    }
+}
+
+pub(super) fn generate_square_points(point_count: usize) -> Vec<Vec2> {
+    let n = (point_count as f32).sqrt() as usize;
+    let mut points = Vec::with_capacity(n * n);
+    for x in 0..n {
+        for y in 0..n {
+            points.push(vec2(
+                (0.5 + x as f32) / n as f32 * MAP_SIZE,
+                (0.5 + y as f32) / n as f32 * MAP_SIZE,
+            ));
+        }
+    }
+    points
+}
+
+fn build_regions(point_count: usize) -> Vec<Vec<Vec2>> {
+    build_square_regions(point_count)
+}
+
+fn build_square_regions(point_count: usize) -> Vec<Vec<Vec2>> {
+    let n = (point_count as f32).sqrt() as usize;
+    let cell = MAP_SIZE / n as f32;
+    let mut regions = Vec::with_capacity(n * n);
+    for x in 0..n {
+        for y in 0..n {
+            let left = x as f32 * cell;
+            let right = (x + 1) as f32 * cell;
+            let top = y as f32 * cell;
+            let bottom = (y + 1) as f32 * cell;
+            regions.push(vec![
+                vec2(left, top),
+                vec2(right, top),
+                vec2(right, bottom),
+                vec2(left, bottom),
+            ]);
+        }
+    }
+    regions
+}
+
+fn make_corner(
+    corners: &mut Vec<Corner>,
+    lookup: &mut HashMap<(i32, i32), usize>,
+    point: Vec2,
+) -> usize {
+    let clamped = vec2(point.x.clamp(0.0, MAP_SIZE), point.y.clamp(0.0, MAP_SIZE));
+    let key = (
+        (clamped.x * 1000.0).round() as i32,
+        (clamped.y * 1000.0).round() as i32,
+    );
+    if let Some(&corner_id) = lookup.get(&key) {
+        return corner_id;
+    }
+    let border = clamped.x <= 0.001
+        || clamped.x >= MAP_SIZE - 0.001
+        || clamped.y <= 0.001
+        || clamped.y >= MAP_SIZE - 0.001;
+    let index = corners.len();
+    corners.push(Corner {
+        index,
+        point: clamped,
+        ocean: false,
+        water: false,
+        coast: false,
+        border,
+        elevation: 0.0,
+        moisture: 0.0,
+        touches: Vec::new(),
+        protrudes: Vec::new(),
+        adjacent: Vec::new(),
+        river: 0,
+        downslope: index,
+        watershed: index,
+        watershed_size: 0,
+    });
+    lookup.insert(key, index);
+    index
+}
+
+fn improve_corners(centers: &mut [Center], corners: &mut [Corner], edges: &mut [Edge]) {
+    let new_points: Vec<Vec2> = corners
+        .iter()
+        .map(|corner| {
+            if corner.border {
+                corner.point
+            } else {
+                corner
+                    .touches
+                    .iter()
+                    .fold(Vec2::ZERO, |acc, &center_id| acc + centers[center_id].point)
+                    / corner.touches.len() as f32
+            }
+        })
+        .collect();
+
+    for (corner, point) in corners.iter_mut().zip(new_points) {
+        corner.point = point;
+    }
+    for edge in edges {
+        if let (Some(v0), Some(v1)) = (edge.v0, edge.v1) {
+            edge.midpoint = (corners[v0].point + corners[v1].point) * 0.5;
+        }
+    }
+}
+
+fn histogram_pairs(colors: &[u32], buckets: &[usize]) -> Vec<(u32, f32)> {
+    colors
+        .iter()
+        .zip(buckets)
+        .map(|(&color, &count)| (color, count as f32))
+        .collect()
+}
+
+fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
+    if !items.contains(&item) {
+        items.push(item);
+    }
+}
+
+fn sorted_pair(a: usize, b: usize) -> (usize, usize) {
+    if a < b { (a, b) } else { (b, a) }
+}
+
+fn average(values: impl Iterator<Item = f32>) -> f32 {
+    let mut total = 0.0;
+    let mut count = 0usize;
+    for value in values {
+        total += value;
+        count += 1;
+    }
+    if count == 0 {
+        0.0
+    } else {
+        total / count as f32
+    }
+}
+
+fn flash_interpolate(a: Vec2, b: Vec2, f: f32) -> Vec2 {
+    b + (a - b) * f
+}
+
+fn build_noisy_line_segments(
+    rng: &mut MapRng,
+    a: Vec2,
+    b: Vec2,
+    c: Vec2,
+    d: Vec2,
+    min_length: f32,
+) -> Vec<Vec2> {
+    fn subdivide(
+        rng: &mut MapRng,
+        points: &mut Vec<Vec2>,
+        a: Vec2,
+        b: Vec2,
+        c: Vec2,
+        d: Vec2,
+        min_length: f32,
+    ) {
+        if a.distance(c) < min_length || b.distance(d) < min_length {
+            return;
+        }
+
+        let p = map_random_f32(rng, 0.2..0.8);
+        let q = map_random_f32(rng, 0.2..0.8);
+        let e = flash_interpolate(a, d, p);
+        let f = flash_interpolate(b, c, p);
+        let g = flash_interpolate(a, b, q);
+        let i = flash_interpolate(d, c, q);
+        let h = flash_interpolate(e, f, q);
+        let s = 1.0 - map_random_f32(rng, -0.4..0.4);
+        let t = 1.0 - map_random_f32(rng, -0.4..0.4);
+
+        subdivide(
+            rng,
+            points,
+            a,
+            flash_interpolate(g, b, s),
+            h,
+            flash_interpolate(e, d, t),
+            min_length,
+        );
+        points.push(h);
+        subdivide(
+            rng,
+            points,
+            h,
+            flash_interpolate(f, c, s),
+            c,
+            flash_interpolate(i, d, t),
+            min_length,
+        );
+    }
+
+    let mut points = vec![a];
+    subdivide(rng, &mut points, a, b, c, d, min_length);
+    points.push(c);
+    points
+}

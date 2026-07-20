@@ -26,8 +26,10 @@ cargo build
 
 Guidelines:
 
-- Always try to use cargo libraries, as long as the library is well maintained, correct and popular.
-- Use Macroquad APIs for rendering, input, UI, screenshots, and window setup unless a local module already provides a better abstraction.
+- Prefer capabilities in this order: Macroquad APIs first, then well-maintained Cargo libraries, then local code when no good library exists.
+- Use Macroquad APIs for rendering, input, UI, screenshots, window setup, and owned deterministic randomness unless a local module already provides a better abstraction.
+- Use the `noise` crate for procedural noise instead of hand-rolled noise math.
+- Use Macroquad's owned `macroquad::rand::RandGenerator` for deterministic seeded map generation; avoid global RNG state.
 
 ## Debug Launch / Visual Capture
 
@@ -83,6 +85,10 @@ cargo run
 The app saves the PNG and exits automatically. Keep review captures in
 `.qa-captures/`, `.tmp-qa-captures/`, or `captures/`; those folders are ignored
 by git.
+
+Mapgen builds maps on a background worker. For high point counts, use a larger
+`TICTACTOE_SCREENSHOT_FRAMES` value so the capture records the completed map
+instead of the in-progress loading frame.
 
 Examples:
 
