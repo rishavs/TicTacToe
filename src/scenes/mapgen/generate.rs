@@ -272,6 +272,200 @@ impl PolyMap {
                     center.ocean_distance <= 1 || (center.ocean_distance == 2 && jitter > 0.4);
             }
         }
+
+        self.fill_enclosed_deep_ocean_pockets();
+        self.connect_islands_with_shallow_ocean();
+        self.fill_enclosed_deep_ocean_pockets();
+    }
+
+    fn fill_enclosed_deep_ocean_pockets(&mut self) {
+        let mut visited = vec![false; self.centers.len()];
+        let mut enclosed = Vec::new();
+
+        for start in 0..self.centers.len() {
+            if visited[start] || !self.centers[start].ocean || self.centers[start].shallow_ocean {
+                continue;
+            }
+
+            let mut component = Vec::new();
+            let mut queue = VecDeque::from([start]);
+            let mut touches_border = false;
+            let mut bordered_only_by_shallow_ocean = true;
+            visited[start] = true;
+
+            while let Some(center_id) = queue.pop_front() {
+                component.push(center_id);
+                touches_border |= self.centers[center_id].border;
+
+                for &neighbor in &self.centers[center_id].neighbors {
+                    if self.centers[neighbor].ocean && !self.centers[neighbor].shallow_ocean {
+                        if !visited[neighbor] {
+                            visited[neighbor] = true;
+                            queue.push_back(neighbor);
+                        }
+                    } else if !self.centers[neighbor].ocean || !self.centers[neighbor].shallow_ocean
+                    {
+                        bordered_only_by_shallow_ocean = false;
+                    }
+                }
+            }
+
+            if !touches_border && bordered_only_by_shallow_ocean {
+                enclosed.extend(component);
+            }
+        }
+
+        for center_id in enclosed {
+            self.centers[center_id].shallow_ocean = true;
+            if self.centers[center_id].ocean_distance < 0 {
+                self.centers[center_id].ocean_distance = 2;
+            }
+        }
+    }
+
+    fn connect_islands_with_shallow_ocean(&mut self) {
+        let Some(mainland_start) = self.largest_passable_land_component_start() else {
+            return;
+        };
+
+        loop {
+            let connected = self.passable_component_from(mainland_start);
+            if self
+                .centers
+                .iter()
+                .all(|center| center.water || connected[center.index])
+            {
+                break;
+            }
+
+            let Some(path) = self.shortest_ocean_path_to_unconnected_land(&connected) else {
+                break;
+            };
+
+            for center_id in path {
+                if self.centers[center_id].ocean {
+                    self.centers[center_id].shallow_ocean = true;
+                    self.centers[center_id].ocean_distance =
+                        self.centers[center_id].ocean_distance.max(2);
+                }
+            }
+        }
+    }
+
+    fn largest_passable_land_component_start(&self) -> Option<usize> {
+        let mut visited = vec![false; self.centers.len()];
+        let mut best_start = None;
+        let mut best_land_count = 0usize;
+
+        for start in 0..self.centers.len() {
+            if visited[start] || !self.is_land_or_shallow_ocean(start) {
+                continue;
+            }
+
+            let mut first_land = None;
+            let mut land_count = 0usize;
+            let mut queue = VecDeque::from([start]);
+            visited[start] = true;
+
+            while let Some(center_id) = queue.pop_front() {
+                if !self.centers[center_id].water {
+                    land_count += 1;
+                    first_land.get_or_insert(center_id);
+                }
+
+                for &neighbor in &self.centers[center_id].neighbors {
+                    if !visited[neighbor] && self.is_land_or_shallow_ocean(neighbor) {
+                        visited[neighbor] = true;
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+
+            if land_count > best_land_count {
+                best_land_count = land_count;
+                best_start = first_land;
+            }
+        }
+
+        best_start
+    }
+
+    fn passable_component_from(&self, start: usize) -> Vec<bool> {
+        let mut connected = vec![false; self.centers.len()];
+        if !self.is_land_or_shallow_ocean(start) {
+            return connected;
+        }
+
+        let mut queue = VecDeque::from([start]);
+        connected[start] = true;
+        while let Some(center_id) = queue.pop_front() {
+            for &neighbor in &self.centers[center_id].neighbors {
+                if !connected[neighbor] && self.is_land_or_shallow_ocean(neighbor) {
+                    connected[neighbor] = true;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        connected
+    }
+
+    fn shortest_ocean_path_to_unconnected_land(&self, connected: &[bool]) -> Option<Vec<usize>> {
+        let mut visited = connected.to_vec();
+        let mut parent = vec![None; self.centers.len()];
+        let mut queue = VecDeque::new();
+
+        for (center_id, &is_connected) in connected.iter().enumerate() {
+            if is_connected {
+                queue.push_back(center_id);
+            }
+        }
+
+        while let Some(center_id) = queue.pop_front() {
+            for &neighbor in &self.centers[center_id].neighbors {
+                if visited[neighbor] {
+                    continue;
+                }
+
+                if !self.centers[neighbor].water {
+                    parent[neighbor] = Some(center_id);
+                    return Some(self.reconstruct_bridge_path(neighbor, &parent, connected));
+                }
+
+                if self.centers[neighbor].ocean && !self.centers[neighbor].border {
+                    visited[neighbor] = true;
+                    parent[neighbor] = Some(center_id);
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn reconstruct_bridge_path(
+        &self,
+        target: usize,
+        parent: &[Option<usize>],
+        connected: &[bool],
+    ) -> Vec<usize> {
+        let mut path = Vec::new();
+        let mut current = target;
+
+        while !connected[current] {
+            path.push(current);
+            let Some(previous) = parent[current] else {
+                break;
+            };
+            current = previous;
+        }
+
+        path.reverse();
+        path
+    }
+
+    fn is_land_or_shallow_ocean(&self, center_id: usize) -> bool {
+        let center = &self.centers[center_id];
+        !center.water || (center.ocean && center.shallow_ocean)
     }
 
     fn redistribute_elevations(&mut self) {

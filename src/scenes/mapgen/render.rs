@@ -1,3 +1,4 @@
+use super::biome::LAKE_WATER_COLOR;
 use super::*;
 use macroquad::ui::widgets;
 use macroquad::ui::{hash, root_ui};
@@ -109,7 +110,7 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
                 map_rect,
                 source_rect,
                 1.0,
-                color_from_u32(0x225588),
+                color_from_u32(LAKE_WATER_COLOR),
             );
         } else if !a.water && !b.water && edge.river > 0 {
             draw_noisy_edge_path(
@@ -118,7 +119,7 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
                 map_rect,
                 source_rect,
                 (edge.river as f32).sqrt(),
-                color_from_u32(0x225588),
+                color_from_u32(LAKE_WATER_COLOR),
             );
         }
     }

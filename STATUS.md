@@ -63,7 +63,9 @@
 - [x] Custom hand-rolled PRNG replaced with Macroquad's owned RNG
 - [x] Renderer iterates center borders and edges directly instead of repeatedly searching neighbor edges
 - [x] Ocean biome split into shallow and deep ocean, with shallow water following the island coastline using deterministic coast-distance jitter
-- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, and drainage-loop behavior
+- [x] Enclosed deep-ocean pockets fully surrounded by shallow ocean are promoted to shallow without removing open deep ocean
+- [x] Disconnected islands are joined to the mainland with minimal shallow-ocean paths while preserving border-connected deep ocean
+- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, island shallow connectivity, and drainage-loop behavior
 
 ## Removed / Stale Items
 

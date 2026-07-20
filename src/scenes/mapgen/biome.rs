@@ -1,5 +1,8 @@
 use super::model::Center;
 use macroquad::prelude::{Vec2, vec3};
+
+pub(super) const LAKE_WATER_COLOR: u32 = 0x336699;
+
 pub(super) fn get_biome(center: &Center) -> &'static str {
     if center.ocean {
         if center.shallow_ocean {
@@ -59,11 +62,11 @@ pub(super) fn get_biome(center: &Center) -> &'static str {
 pub(super) fn biome_color(biome: &str) -> u32 {
     match biome {
         "OCEAN" | "DEEP_OCEAN" => 0x333866,
-        "SHALLOW_OCEAN" => 0x4d6f93,
+        "SHALLOW_OCEAN" => LAKE_WATER_COLOR,
         "COAST" => 0x33335a,
-        "LAKESHORE" => 0x225588,
-        "LAKE" => 0x336699,
-        "RIVER" => 0x225588,
+        "LAKESHORE" => LAKE_WATER_COLOR,
+        "LAKE" => LAKE_WATER_COLOR,
+        "RIVER" => LAKE_WATER_COLOR,
         "MARSH" => 0x2f6666,
         "ICE" => 0x99ffff,
         "BEACH" => 0xa09077,

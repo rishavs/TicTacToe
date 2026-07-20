@@ -1,5 +1,6 @@
 use super::generate::generate_square_points;
 use super::*;
+use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -47,6 +48,77 @@ fn map_fingerprint(map: &PolyMap) -> u64 {
         noisy_edge.path1.as_ref().map(Vec::len).hash(&mut hasher);
     }
     hasher.finish()
+}
+
+fn deep_ocean_components(map: &PolyMap) -> Vec<Vec<usize>> {
+    let mut components = Vec::new();
+    let mut visited = vec![false; map.centers.len()];
+    for start in 0..map.centers.len() {
+        if visited[start] || map.centers[start].biome != "DEEP_OCEAN" {
+            continue;
+        }
+
+        let mut component = Vec::new();
+        let mut queue = VecDeque::from([start]);
+        visited[start] = true;
+        while let Some(center_id) = queue.pop_front() {
+            component.push(center_id);
+            for &neighbor in &map.centers[center_id].neighbors {
+                if !visited[neighbor] && map.centers[neighbor].biome == "DEEP_OCEAN" {
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        components.push(component);
+    }
+    components
+}
+
+fn deep_component_is_fully_surrounded_by_shallow(map: &PolyMap, component: &[usize]) -> bool {
+    let mut in_component = vec![false; map.centers.len()];
+    for &center_id in component {
+        in_component[center_id] = true;
+    }
+
+    !component
+        .iter()
+        .any(|&center_id| map.centers[center_id].border)
+        && component.iter().all(|&center_id| {
+            map.centers[center_id].neighbors.iter().all(|&neighbor| {
+                in_component[neighbor] || map.centers[neighbor].biome == "SHALLOW_OCEAN"
+            })
+        })
+}
+
+fn passable_land_and_shallow_components(map: &PolyMap) -> Vec<Vec<usize>> {
+    let mut components = Vec::new();
+    let mut visited = vec![false; map.centers.len()];
+    for start in 0..map.centers.len() {
+        if visited[start] || !is_land_or_shallow_ocean(map, start) {
+            continue;
+        }
+
+        let mut component = Vec::new();
+        let mut queue = VecDeque::from([start]);
+        visited[start] = true;
+        while let Some(center_id) = queue.pop_front() {
+            component.push(center_id);
+            for &neighbor in &map.centers[center_id].neighbors {
+                if !visited[neighbor] && is_land_or_shallow_ocean(map, neighbor) {
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        components.push(component);
+    }
+    components
+}
+
+fn is_land_or_shallow_ocean(map: &PolyMap, center_id: usize) -> bool {
+    let center = &map.centers[center_id];
+    !center.water || center.biome == "SHALLOW_OCEAN"
 }
 
 #[test]
@@ -543,6 +615,16 @@ fn biome_categories_match_water_state() {
 }
 
 #[test]
+fn rivers_lakes_and_shallow_ocean_share_lake_color() {
+    let lake_color = biome::biome_color("LAKE");
+
+    assert_eq!(lake_color, 0x336699);
+    assert_eq!(biome::biome_color("SHALLOW_OCEAN"), lake_color);
+    assert_eq!(biome::biome_color("RIVER"), lake_color);
+    assert_eq!(biome::biome_color("LAKESHORE"), lake_color);
+}
+
+#[test]
 fn ocean_biomes_split_into_shallow_and_deep() {
     let map = generate_map(
         DEFAULT_SEED_TEXT,
@@ -655,6 +737,74 @@ fn simplex_is_not_forced_to_perlin_two_cell_edge_buffer() {
             .min(MAP_SIZE - center.point.y);
         distance_from_edge <= buffer && center.biome != "DEEP_OCEAN"
     }));
+}
+
+#[test]
+fn enclosed_deep_ocean_components_are_promoted_to_shallow() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(
+        deep_ocean_components(&map)
+            .iter()
+            .all(|component| !deep_component_is_fully_surrounded_by_shallow(&map, component)),
+        "deep ocean components fully surrounded by shallow ocean should be shallow"
+    );
+}
+
+#[test]
+fn open_deep_ocean_survives_shallow_cleanup() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(
+        deep_ocean_components(&map).iter().any(|component| component
+            .iter()
+            .any(|&center_id| map.centers[center_id].border)),
+        "cleanup must preserve the border-connected open deep ocean"
+    );
+}
+
+#[test]
+fn landmasses_are_connected_through_shallow_ocean() {
+    let seeds = ["85882-8", "85882-9", "85883-8", "85884-8"];
+
+    for seed in seeds {
+        let map = generate_map(seed, IslandType::Perlin, PointType::Square, 4000);
+        let land_components = passable_land_and_shallow_components(&map)
+            .into_iter()
+            .filter(|component| {
+                component
+                    .iter()
+                    .any(|&center_id| !map.centers[center_id].water)
+            })
+            .count();
+
+        assert_eq!(
+            land_components, 1,
+            "{seed} should connect every island to the mainland through shallow ocean"
+        );
+    }
+}
+
+#[test]
+fn shallow_bridges_do_not_remove_open_deep_ocean() {
+    let map = generate_map("85882-8", IslandType::Perlin, PointType::Square, 4000);
+
+    assert!(
+        deep_ocean_components(&map).iter().any(|component| component
+            .iter()
+            .any(|&center_id| map.centers[center_id].border)),
+        "shallow bridge cleanup must preserve the border-connected deep ocean boundary"
+    );
 }
 
 #[test]

@@ -60,7 +60,9 @@ Ocean design:
 - Deep ocean represents open water farther away from land.
 - Shallow ocean follows the island coastline roughly, but not exactly.
 - The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf.
-- Shallow/deep ocean are visual and classification states only for now; they do not yet affect movement, combat, resources, or win/loss rules.
+- Small deep-ocean pockets fully enclosed by shallow ocean are treated as shallow ocean; open/border-connected deep ocean remains deep.
+- Every island is connected back to the mainland through shallow ocean cells. This prepares deep ocean to act as an impassable gameplay boundary while keeping disconnected islands reachable.
+- Shallow/deep ocean are classification states only for now; they do not yet affect implemented movement, combat, resources, or win/loss rules.
 - Perlin maps keep land away from the generated map edge with an edge-distance falloff, leaving about two cells of deep-ocean buffer outside the shallow shelf without increasing grid size.
 - Simplex maps keep their current island scale; their shape uses radial threshold constants rather than the Perlin cell-buffer rule.
 

@@ -93,12 +93,12 @@ debug env / UI controls
   -> MapgenScene::regenerate
   -> background worker calls PolyMap::generate(seed, island type, point type, point count)
   -> graph construction, elevation, Perlin edge-buffer shaping, ocean/coast/land assignment
-  -> ocean-depth assignment, moisture, rivers, biomes, noisy edges
+  -> ocean-depth assignment and shallow bridge cleanup, moisture, rivers, biomes, noisy edges
   -> worker sends completed PolyMap over channel
   -> render module draws visible polygons into the square map viewport through Macroquad
 ```
 
-Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about two edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named radial threshold constants rather than a cell-based edge buffer. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, Perlin edge buffering, shallow/deep ocean placement, and drainage behavior.
+Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about two edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named radial threshold constants rather than a cell-based edge buffer. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. Any enclosed deep-ocean component fully surrounded by shallow ocean is promoted to shallow, while border-connected open deep ocean is preserved. A topology cleanup then treats the largest passable land/shallow component as the mainland and carves minimal non-border shallow-ocean paths to disconnected islands, so every landmass is reachable without turning the whole deep ocean into shallow water. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, Perlin edge buffering, shallow/deep ocean placement, enclosed deep-ocean cleanup, island-to-mainland shallow connectivity, and drainage behavior.
 
 ## Debug Launch And Capture
 
