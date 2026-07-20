@@ -15,6 +15,7 @@ Split the single ocean biome into shallow and deep ocean. Shallow ocean should b
 - Add deterministic coordinate jitter at the outer shallow boundary so the shelf feels organic but remains reproducible.
 - Connect disconnected islands back to the mainland by converting only the shortest needed non-border deep-ocean path into shallow ocean.
 - Expose shallow sea size as a mapgen control with `Narrow` matching the original/current shelf size.
+- Round narrow near-land deep-ocean fingers into shallow bays without expanding open deep ocean.
 - Keep the change classification-only for now. Movement, combat, resources, and other game rules are not implemented yet.
 
 ## Implementation Checklist
@@ -29,6 +30,7 @@ Split the single ocean biome into shallow and deep ocean. Shallow ocean should b
 - [x] Add a deterministic shallow bridge post-process from disconnected islands to the mainland.
 - [x] Preserve border-connected deep ocean after shallow bridge cleanup.
 - [x] Add a shallow sea size control that widens the shallow ocean threshold from the narrow default.
+- [x] Add a bounded bay-rounding pass for near-land deep-ocean fingers pinched by shallow water.
 - [x] Render shallow ocean with a separate palette color.
 - [x] Update architecture, design, and status docs.
 - [x] Run final format, compile, tests, and visual capture.

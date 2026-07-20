@@ -2,6 +2,8 @@ use super::biome::{biome_color, calculate_lighting, get_biome, interpolate_color
 use super::*;
 use std::collections::{HashMap, VecDeque};
 
+const SHALLOW_BAY_ROUNDING_PASSES: usize = 8;
+
 #[cfg(test)]
 pub(super) fn generate_map(
     seed_text: &str,
@@ -299,7 +301,11 @@ impl PolyMap {
         }
 
         self.fill_enclosed_deep_ocean_pockets();
+        self.round_shallow_bays(shallow_sea_size);
+        self.fill_enclosed_deep_ocean_pockets();
         self.connect_islands_with_shallow_ocean();
+        self.fill_enclosed_deep_ocean_pockets();
+        self.round_shallow_bays(shallow_sea_size);
         self.fill_enclosed_deep_ocean_pockets();
     }
 
@@ -346,6 +352,46 @@ impl PolyMap {
                 self.centers[center_id].ocean_distance = 2;
             }
         }
+    }
+
+    fn round_shallow_bays(&mut self, shallow_sea_size: ShallowSeaSize) {
+        let max_distance = shallow_sea_size.guaranteed_shallow_distance() + 3;
+
+        for _ in 0..SHALLOW_BAY_ROUNDING_PASSES {
+            let rounded: Vec<_> = self
+                .centers
+                .iter()
+                .filter(|center| self.is_shallow_bay_rounding_candidate(center.index, max_distance))
+                .map(|center| center.index)
+                .collect();
+
+            if rounded.is_empty() {
+                break;
+            }
+
+            for center_id in rounded {
+                self.centers[center_id].shallow_ocean = true;
+            }
+        }
+    }
+
+    fn is_shallow_bay_rounding_candidate(&self, center_id: usize, max_distance: i32) -> bool {
+        let center = &self.centers[center_id];
+        center.ocean
+            && !center.shallow_ocean
+            && !center.border
+            && center.ocean_distance <= max_distance
+            && self.shallow_ocean_neighbor_count(center_id) >= 2
+    }
+
+    fn shallow_ocean_neighbor_count(&self, center_id: usize) -> usize {
+        self.centers[center_id]
+            .neighbors
+            .iter()
+            .filter(|&&neighbor| {
+                self.centers[neighbor].ocean && self.centers[neighbor].shallow_ocean
+            })
+            .count()
     }
 
     fn connect_islands_with_shallow_ocean(&mut self) {

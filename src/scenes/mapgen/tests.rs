@@ -121,6 +121,24 @@ fn is_land_or_shallow_ocean(map: &PolyMap, center_id: usize) -> bool {
     !center.water || center.biome == "SHALLOW_OCEAN"
 }
 
+fn deep_ocean_finger_cells(map: &PolyMap) -> Vec<usize> {
+    map.centers
+        .iter()
+        .filter(|center| {
+            center.biome == "DEEP_OCEAN"
+                && !center.border
+                && center.ocean_distance <= 4
+                && center
+                    .neighbors
+                    .iter()
+                    .filter(|&&neighbor| map.centers[neighbor].biome == "SHALLOW_OCEAN")
+                    .count()
+                    >= 2
+        })
+        .map(|center| center.index)
+        .collect()
+}
+
 #[test]
 fn default_seed_matches_swf_demo() {
     assert_eq!(parse_seed(DEFAULT_SEED_TEXT), (85882, 8));
@@ -728,6 +746,20 @@ fn shallow_sea_size_expands_shallow_ocean_without_removing_deep_ocean() {
             .iter()
             .any(|center| center.biome == "DEEP_OCEAN")
     );
+}
+
+#[test]
+fn shallow_bays_round_off_near_land_deep_ocean_fingers() {
+    let seeds = ["85882-8", "85884-8", "85885-8"];
+
+    for seed in seeds {
+        let map = generate_map(seed, IslandType::Perlin, PointType::Square, 4000);
+
+        assert!(
+            deep_ocean_finger_cells(&map).is_empty(),
+            "{seed} should not leave near-land deep ocean cells pinched between shallow ocean"
+        );
+    }
 }
 
 #[test]

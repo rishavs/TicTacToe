@@ -61,6 +61,7 @@ Ocean design:
 - Deep ocean represents open water farther away from land.
 - Shallow ocean follows the island coastline roughly, but not exactly.
 - The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf. `Narrow` is the default/current baseline; larger shallow sea settings convert additional near-land deep ocean bands into shallow sea.
+- Narrow deep-ocean fingers inside bays are rounded into shallow ocean when they are close to land and pinched by shallow water. This is a local cleanup, not a global shallow expansion.
 - Small deep-ocean pockets fully enclosed by shallow ocean are treated as shallow ocean; open/border-connected deep ocean remains deep.
 - Every island is connected back to the mainland through shallow ocean cells. This prepares deep ocean to act as an impassable gameplay boundary while keeping disconnected islands reachable.
 - Shallow/deep ocean are classification states only for now; they do not yet affect implemented movement, combat, resources, or win/loss rules.
