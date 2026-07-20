@@ -18,8 +18,10 @@ mod tests;
 
 #[cfg(test)]
 use self::noise::{fractal_noise_2d, simplex_fractal_noise_2d};
+#[cfg(test)]
 use generate::generate_map;
-use model::{Center, Corner, Edge, NoisyEdge, PolyMap};
+use generate::generate_map_with_shallow_sea;
+use model::{BiomeCount, Center, Corner, Edge, NoisyEdge, PolyMap};
 use noise::IslandProfile;
 #[cfg(test)]
 use random::map_random_u32;
@@ -54,17 +56,15 @@ pub fn update() -> Option<Scene> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IslandType {
-    Radial,
     Perlin,
     Simplex,
 }
 
 impl IslandType {
-    const ALL: [Self; 3] = [Self::Radial, Self::Perlin, Self::Simplex];
+    const ALL: [Self; 2] = [Self::Perlin, Self::Simplex];
 
     fn label(self) -> &'static str {
         match self {
-            Self::Radial => "Radial",
             Self::Perlin => "Perlin",
             Self::Simplex => "Simplex",
         }
@@ -72,7 +72,6 @@ impl IslandType {
 
     fn from_debug_env(value: &str) -> Option<Self> {
         match value.trim().to_lowercase().as_str() {
-            "radial" => Some(Self::Radial),
             "perlin" => Some(Self::Perlin),
             "simplex" => Some(Self::Simplex),
             _ => None,
@@ -86,14 +85,6 @@ enum PointType {
 }
 
 impl PointType {
-    const ALL: [Self; 1] = [Self::Square];
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Square => "Square",
-        }
-    }
-
     fn from_debug_env(value: &str) -> Option<Self> {
         match value.trim().to_lowercase().as_str() {
             "square" => Some(Self::Square),
@@ -127,14 +118,60 @@ impl ViewMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShallowSeaSize {
+    Narrow,
+    Normal,
+    Wide,
+    VeryWide,
+}
+
+impl ShallowSeaSize {
+    const ALL: [Self; 4] = [Self::Narrow, Self::Normal, Self::Wide, Self::VeryWide];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Narrow => "Narrow",
+            Self::Normal => "Normal",
+            Self::Wide => "Wide",
+            Self::VeryWide => "Very Wide",
+        }
+    }
+
+    fn from_debug_env(value: &str) -> Option<Self> {
+        match value
+            .trim()
+            .to_lowercase()
+            .replace([' ', '_', '-'], "")
+            .as_str()
+        {
+            "narrow" => Some(Self::Narrow),
+            "normal" => Some(Self::Normal),
+            "wide" => Some(Self::Wide),
+            "verywide" => Some(Self::VeryWide),
+            _ => None,
+        }
+    }
+
+    fn guaranteed_shallow_distance(self) -> i32 {
+        match self {
+            Self::Narrow => 1,
+            Self::Normal => 2,
+            Self::Wide => 3,
+            Self::VeryWide => 4,
+        }
+    }
+}
+
 const POINT_COUNTS: [usize; 4] = [4000, 8000, 16000, 32000];
 const DEFAULT_ISLAND_TYPE: IslandType = IslandType::Perlin;
 const DEFAULT_POINT_TYPE: PointType = PointType::Square;
 const DEFAULT_POINT_COUNT: usize = 4000;
+const DEFAULT_SHALLOW_SEA_SIZE: ShallowSeaSize = ShallowSeaSize::Narrow;
 const DEFAULT_VIEW_MODE: ViewMode = ViewMode::Biome;
 
 fn island_button_x_positions() -> &'static [f32] {
-    &[0.0, 58.0, 124.0]
+    &[0.0, 68.0]
 }
 
 struct MapgenLayout {
@@ -157,7 +194,7 @@ fn mapgen_layout(width: f32, height: f32) -> MapgenLayout {
 }
 
 fn seed_field_rect(sidebar: Rect) -> Rect {
-    Rect::new(sidebar.x + 79.0, 28.0, 66.0, 24.0)
+    Rect::new(sidebar.x + 79.0, 28.0, 88.0, 24.0)
 }
 
 fn map_source_rect(pan: Vec2, zoom: f32) -> Rect {
@@ -190,6 +227,7 @@ struct MapgenScene {
     island_type: IslandType,
     point_type: PointType,
     point_count: usize,
+    shallow_sea_size: ShallowSeaSize,
     view_mode: ViewMode,
     map: Option<PolyMap>,
     generation: Option<GenerationJob>,
@@ -208,6 +246,7 @@ struct GenerationRequest {
     island_type: IslandType,
     point_type: PointType,
     point_count: usize,
+    shallow_sea_size: ShallowSeaSize,
 }
 
 impl MapgenScene {
@@ -227,6 +266,10 @@ impl MapgenScene {
             .and_then(|value| value.parse::<usize>().ok())
             .filter(|value| POINT_COUNTS.contains(value))
             .unwrap_or(DEFAULT_POINT_COUNT);
+        let shallow_sea_size = env::var("TICTACTOE_MAPGEN_SHALLOW_SEA")
+            .ok()
+            .and_then(|value| ShallowSeaSize::from_debug_env(&value))
+            .unwrap_or(DEFAULT_SHALLOW_SEA_SIZE);
         let view_mode = env::var("TICTACTOE_MAPGEN_VIEW")
             .ok()
             .and_then(|value| ViewMode::from_debug_env(&value))
@@ -239,6 +282,7 @@ impl MapgenScene {
             island_type,
             point_type,
             point_count,
+            shallow_sea_size,
             view_mode,
             map: None,
             generation: None,
@@ -351,28 +395,37 @@ impl MapgenScene {
             island_type: self.island_type,
             point_type: self.point_type,
             point_count: self.point_count,
+            shallow_sea_size: self.shallow_sea_size,
         };
         self.start_generation(request);
+    }
+
+    fn apply_random_seed_text(&mut self, seed_text: String) {
+        self.seed_text = seed_text;
+        self.seed_edit_text = self.seed_text.clone();
+        self.seed_input_active = false;
+        self.seed_replace_on_type = false;
     }
 
     fn start_generation(&mut self, request: GenerationRequest) {
         let (sender, receiver) = mpsc::channel();
         let worker_request = request.clone();
         thread::spawn(move || {
-            let map = generate_map(
+            let map = generate_map_with_shallow_sea(
                 &worker_request.seed_text,
                 worker_request.island_type,
                 worker_request.point_type,
                 worker_request.point_count,
+                worker_request.shallow_sea_size,
             );
             let _ = sender.send(map);
         });
         self.generation = Some(GenerationJob { receiver });
         self.status = format!(
-            "Generating {} / {} / {} sites...",
+            "Generating {} / {} sites / {} sea...",
             request.island_type.label(),
-            request.point_type.label(),
-            request.point_count
+            request.point_count,
+            request.shallow_sea_size.label()
         );
     }
 
@@ -387,10 +440,10 @@ impl MapgenScene {
                 self.generation = None;
                 self.pan = clamp_pan(self.pan, self.zoom);
                 self.status = format!(
-                    "{} / {} / {} sites",
+                    "{} / {} sites / {} sea",
                     self.island_type.label(),
-                    self.point_type.label(),
-                    centers
+                    centers,
+                    self.shallow_sea_size.label()
                 );
             }
             Err(TryRecvError::Empty) => {}

@@ -29,7 +29,7 @@ src/
     mapgen/model.rs    - Map data structs: centers, corners, edges, noisy edges, PolyMap
     mapgen/noise.rs    - Island profiles and cached procedural noise sampling
     mapgen/random.rs   - Macroquad owned RNG wrappers for deterministic generation
-    mapgen/render.rs   - Mapgen drawing, sidebar UI, histograms, map edge/polygon rendering
+    mapgen/render.rs   - Mapgen drawing, sidebar UI, biome list, map edge/polygon rendering
     mapgen/seed.rs     - Seed parsing, random seed text, seed input helpers
     mapgen/tests.rs    - Mapgen unit tests
 ```
@@ -65,11 +65,11 @@ Macroquad window setup
 
 `src/scenes/mapgen.rs` contains scene state, input, and background generation coordination. Child modules under `src/scenes/mapgen/` hold the deterministic model, generation pipeline, rendering, biome/color math, noise, RNG, seed helpers, and tests.
 
-- `MapgenScene` stores selected seed, island type, point type, point count, view mode, current generated map, pending generation job, pan, zoom, and status.
-- `PolyMap` stores generated centers, corners, edges, noisy edges, and histogram data in `mapgen/model.rs`.
+- `MapgenScene` stores selected seed, island type, point type, point count, shallow sea size, view mode, current generated map, pending generation job, pan, zoom, and status.
+- `PolyMap` stores generated centers, corners, edges, noisy edges, and biome count data in `mapgen/model.rs`.
 - `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer. Centers also store ocean depth classification state, including `shallow_ocean` and `ocean_distance`.
-- `IslandType` supports radial, perlin, and simplex shaping.
-- `PointType` currently supports square point layout.
+- `IslandType` supports perlin and simplex shaping.
+- `PointType` currently supports square point layout as an always-on internal setting.
 - `ViewMode` supports biome and slope-style debug views.
 - Seed parsing lives in `mapgen/seed.rs`; pan/zoom math remains in the scene shell; biome classification lives in `mapgen/biome.rs`; graph generation and ocean-depth assignment live in `mapgen/generate.rs`.
 - Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps. In wide windows, the square map is centered inside a neutral gray map area instead of stretching or leaving unused white space.
@@ -91,14 +91,14 @@ This is intentional for the current Macroquad scene model: the mapgen scene keep
 ```text
 debug env / UI controls
   -> MapgenScene::regenerate
-  -> background worker calls PolyMap::generate(seed, island type, point type, point count)
+  -> background worker calls PolyMap::generate(seed, island type, point type, point count, shallow sea size)
   -> graph construction, elevation, Perlin edge-buffer shaping, ocean/coast/land assignment
   -> ocean-depth assignment and shallow bridge cleanup, moisture, rivers, biomes, noisy edges
   -> worker sends completed PolyMap over channel
   -> render module draws visible polygons into the square map viewport through Macroquad
 ```
 
-Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about two edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named radial threshold constants rather than a cell-based edge buffer. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. Any enclosed deep-ocean component fully surrounded by shallow ocean is promoted to shallow, while border-connected open deep ocean is preserved. A topology cleanup then treats the largest passable land/shallow component as the mainland and carves minimal non-border shallow-ocean paths to disconnected islands, so every landmass is reachable without turning the whole deep ocean into shallow water. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, Perlin edge buffering, shallow/deep ocean placement, enclosed deep-ocean cleanup, island-to-mainland shallow connectivity, and drainage behavior.
+Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about two edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named threshold constants rather than the Perlin cell-buffer rule. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. The shallow sea size control increases that distance threshold; `Narrow` is the default/current baseline. Any enclosed deep-ocean component fully surrounded by shallow ocean is promoted to shallow, while border-connected open deep ocean is preserved. A topology cleanup then treats the largest passable land/shallow component as the mainland and carves minimal non-border shallow-ocean paths to disconnected islands, so every landmass is reachable without turning the whole deep ocean into shallow water. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories and counts, Perlin edge buffering, shallow/deep ocean placement, enclosed deep-ocean cleanup, island-to-mainland shallow connectivity, and drainage behavior.
 
 ## Debug Launch And Capture
 
@@ -127,6 +127,7 @@ $env:TICTACTOE_MAPGEN_SEED = "85882-8"
 $env:TICTACTOE_MAPGEN_ISLAND = "perlin"
 $env:TICTACTOE_MAPGEN_POINTS = "square"
 $env:TICTACTOE_MAPGEN_COUNT = "4000"
+$env:TICTACTOE_MAPGEN_SHALLOW_SEA = "narrow"
 $env:TICTACTOE_MAPGEN_VIEW = "biomes"
 ```
 

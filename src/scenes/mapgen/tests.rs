@@ -131,15 +131,13 @@ fn default_scene_configuration_is_trimmed() {
     assert_eq!(DEFAULT_ISLAND_TYPE, IslandType::Perlin);
     assert_eq!(DEFAULT_POINT_TYPE, PointType::Square);
     assert_eq!(DEFAULT_POINT_COUNT, 4000);
+    assert_eq!(DEFAULT_SHALLOW_SEA_SIZE, ShallowSeaSize::Narrow);
     assert_eq!(DEFAULT_VIEW_MODE, ViewMode::Biome);
 }
 
 #[test]
 fn debug_env_accepts_only_remaining_controls() {
-    assert_eq!(
-        IslandType::from_debug_env("RADIAL"),
-        Some(IslandType::Radial)
-    );
+    assert_eq!(IslandType::from_debug_env("RADIAL"), None);
     assert_eq!(
         IslandType::from_debug_env("perlin"),
         Some(IslandType::Perlin)
@@ -153,6 +151,14 @@ fn debug_env_accepts_only_remaining_controls() {
     assert_eq!(
         ViewMode::from_debug_env("2D slopes"),
         Some(ViewMode::Slopes)
+    );
+    assert_eq!(
+        ShallowSeaSize::from_debug_env("narrow"),
+        Some(ShallowSeaSize::Narrow)
+    );
+    assert_eq!(
+        ShallowSeaSize::from_debug_env("wide"),
+        Some(ShallowSeaSize::Wide)
     );
 }
 
@@ -183,6 +189,33 @@ fn seed_input_hitbox_matches_demo_panel_position() {
     assert!(field.contains(vec2(848.0, 29.0)));
     assert!(field.contains(vec2(912.0, 51.0)));
     assert!(!field.contains(vec2(846.0, 29.0)));
+}
+
+#[test]
+fn random_seed_keeps_visible_seed_value() {
+    let mut scene = MapgenScene {
+        seed_text: DEFAULT_SEED_TEXT.to_string(),
+        seed_edit_text: String::new(),
+        seed_input_active: true,
+        seed_replace_on_type: true,
+        island_type: DEFAULT_ISLAND_TYPE,
+        point_type: DEFAULT_POINT_TYPE,
+        point_count: DEFAULT_POINT_COUNT,
+        shallow_sea_size: DEFAULT_SHALLOW_SEA_SIZE,
+        view_mode: DEFAULT_VIEW_MODE,
+        map: None,
+        generation: None,
+        pan: Vec2::ZERO,
+        zoom: MIN_ZOOM,
+        status: String::new(),
+    };
+
+    scene.apply_random_seed_text("12345-6".to_string());
+
+    assert_eq!(scene.seed_text, "12345-6");
+    assert_eq!(scene.seed_edit_text, "12345-6");
+    assert!(!scene.seed_input_active);
+    assert!(!scene.seed_replace_on_type);
 }
 
 #[test]
@@ -226,9 +259,9 @@ fn map_generation_builds_graph_with_land_and_water() {
 }
 
 #[test]
-fn island_shape_buttons_change_inside_function() {
-    let radial = IslandProfile::new(IslandType::Radial, 85882, DEFAULT_POINT_COUNT);
+fn remaining_island_shape_buttons_change_inside_function() {
     let perlin = IslandProfile::new(IslandType::Perlin, 85882, DEFAULT_POINT_COUNT);
+    let simplex = IslandProfile::new(IslandType::Simplex, 85882, DEFAULT_POINT_COUNT);
 
     let sample_points = [
         vec2(-0.75, -0.75),
@@ -242,18 +275,21 @@ fn island_shape_buttons_change_inside_function() {
     assert!(
         sample_points
             .into_iter()
-            .any(|point| radial.inside(point) != perlin.inside(point))
+            .any(|point| simplex.inside(point) != perlin.inside(point))
     );
 }
 
 #[test]
 fn demo_control_labels_match_reference() {
     let island_labels: Vec<_> = IslandType::ALL.iter().map(|kind| kind.label()).collect();
-    let point_labels: Vec<_> = PointType::ALL.iter().map(|kind| kind.label()).collect();
+    let shallow_labels: Vec<_> = ShallowSeaSize::ALL
+        .iter()
+        .map(|size| size.label())
+        .collect();
     let view_labels: Vec<_> = ViewMode::ALL.iter().map(|mode| mode.label()).collect();
 
-    assert_eq!(island_labels, ["Radial", "Perlin", "Simplex"]);
-    assert_eq!(point_labels, ["Square"]);
+    assert_eq!(island_labels, ["Perlin", "Simplex"]);
+    assert_eq!(shallow_labels, ["Narrow", "Normal", "Wide", "Very Wide"]);
     assert_eq!(view_labels, ["Biomes", "2D slopes"]);
     assert_eq!(&POINT_COUNTS[..], &[4000, 8000, 16000, 32000]);
 }
@@ -265,6 +301,7 @@ fn island_button_positions_cover_all_island_shapes() {
 
 #[test]
 fn removed_controls_are_not_accepted_from_debug_env() {
+    assert_eq!(IslandType::from_debug_env("radial"), None);
     assert_eq!(IslandType::from_debug_env("square"), None);
     assert_eq!(IslandType::from_debug_env("blob"), None);
     assert_eq!(PointType::from_debug_env("random"), None);
@@ -276,6 +313,7 @@ fn removed_controls_are_not_accepted_from_debug_env() {
     assert_eq!(ViewMode::from_debug_env("moisture"), None);
     assert_eq!(ViewMode::from_debug_env("polygons"), None);
     assert_eq!(ViewMode::from_debug_env("watersheds"), None);
+    assert_eq!(ShallowSeaSize::from_debug_env("huge"), None);
 }
 
 #[test]
@@ -393,21 +431,6 @@ fn changing_seed_variant_changes_generated_map() {
     let second = generate_map("85882-9", IslandType::Perlin, PointType::Square, 4000);
 
     assert_ne!(map_fingerprint(&first), map_fingerprint(&second));
-}
-
-#[test]
-fn radial_square_generation_builds_valid_island() {
-    let map = generate_map(
-        DEFAULT_SEED_TEXT,
-        IslandType::Radial,
-        PointType::Square,
-        4000,
-    );
-
-    assert!(map.centers.iter().any(|center| center.ocean));
-    assert!(map.centers.iter().any(|center| !center.water));
-    assert!(map.centers.iter().any(|center| center.coast));
-    assert!(map.edges.iter().any(|edge| edge.river > 0));
 }
 
 #[test]
@@ -625,6 +648,25 @@ fn rivers_lakes_and_shallow_ocean_share_lake_color() {
 }
 
 #[test]
+fn biome_counts_list_present_biomes_in_display_order() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let counts = map.biome_counts();
+
+    assert!(!counts.is_empty());
+    assert!(counts.iter().all(|entry| entry.count > 0));
+    assert_eq!(counts[0].name, "Deep Ocean");
+    assert_eq!(
+        counts.iter().map(|entry| entry.count).sum::<usize>(),
+        map.centers.len()
+    );
+}
+
+#[test]
 fn ocean_biomes_split_into_shallow_and_deep() {
     let map = generate_map(
         DEFAULT_SEED_TEXT,
@@ -648,6 +690,43 @@ fn ocean_biomes_split_into_shallow_and_deep() {
             .iter()
             .filter(|center| center.ocean)
             .all(|center| matches!(center.biome, "SHALLOW_OCEAN" | "DEEP_OCEAN"))
+    );
+}
+
+#[test]
+fn shallow_sea_size_expands_shallow_ocean_without_removing_deep_ocean() {
+    let narrow = generate_map_with_shallow_sea(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+        ShallowSeaSize::Narrow,
+    );
+    let very_wide = generate_map_with_shallow_sea(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+        ShallowSeaSize::VeryWide,
+    );
+
+    let narrow_shallow = narrow
+        .centers
+        .iter()
+        .filter(|center| center.biome == "SHALLOW_OCEAN")
+        .count();
+    let very_wide_shallow = very_wide
+        .centers
+        .iter()
+        .filter(|center| center.biome == "SHALLOW_OCEAN")
+        .count();
+
+    assert!(very_wide_shallow > narrow_shallow);
+    assert!(
+        very_wide
+            .centers
+            .iter()
+            .any(|center| center.biome == "DEEP_OCEAN")
     );
 }
 

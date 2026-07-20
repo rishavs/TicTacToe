@@ -50,10 +50,12 @@
 - [x] Map regeneration runs on a background worker so the Macroquad window keeps repainting
 - [x] Seed input and random seed generation
 - [x] Debug environment controls renamed to `TICTACTOE_MAPGEN_*`
-- [x] Island shape options: radial, perlin, simplex
-- [x] Point layout option: square
-- [x] Point count options: 4000, 8000, 16000, 32000
+- [x] Island shape options: perlin, simplex
+- [x] Square point layout kept as the always-on internal layout
+- [x] Island size options: 4000, 8000, 16000, 32000
+- [x] Shallow sea size options: narrow, normal, wide, very wide
 - [x] View modes include biome and slopes
+- [x] Sidebar shows a biome color/count list instead of histograms
 - [x] Pan and zoom support
 - [x] Perlin island shaping leaves about two deep-ocean cells at the generated map edge
 - [x] Wide mapgen windows center the square map inside a neutral gray map area
@@ -63,6 +65,7 @@
 - [x] Custom hand-rolled PRNG replaced with Macroquad's owned RNG
 - [x] Renderer iterates center borders and edges directly instead of repeatedly searching neighbor edges
 - [x] Ocean biome split into shallow and deep ocean, with shallow water following the island coastline using deterministic coast-distance jitter
+- [x] Shallow sea size control expands shallow water from the narrow default while preserving deep ocean
 - [x] Enclosed deep-ocean pockets fully surrounded by shallow ocean are promoted to shallow without removing open deep ocean
 - [x] Disconnected islands are joined to the mainland with minimal shallow-ocean paths while preserving border-connected deep ocean
 - [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, island shallow connectivity, and drainage-loop behavior

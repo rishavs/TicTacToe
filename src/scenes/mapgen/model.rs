@@ -66,3 +66,9 @@ pub(super) struct PolyMap {
     pub(super) center_watersheds: Vec<Option<usize>>,
     pub(super) edge_by_corners: HashMap<(usize, usize), usize>,
 }
+
+pub(super) struct BiomeCount {
+    pub(super) name: &'static str,
+    pub(super) color: u32,
+    pub(super) count: usize,
+}

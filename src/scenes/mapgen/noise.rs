@@ -1,8 +1,6 @@
 use super::IslandType;
-use super::random::{map_random_f32, map_random_i32, map_rng};
 use ::noise::{Fbm, MultiFractal, NoiseFn, OpenSimplex, Perlin};
 use macroquad::prelude::Vec2;
-use std::f32::consts::PI;
 
 const PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS: f32 = 2.0;
 const PERLIN_SHALLOW_SHELF_CELLS: f32 = 3.0;
@@ -15,10 +13,6 @@ const SIMPLEX_RADIAL_FALLOFF: f32 = 0.34;
 
 pub(super) struct IslandProfile {
     kind: IslandType,
-    bumps: i32,
-    start_angle: f32,
-    dip_angle: f32,
-    dip_width: f32,
     perlin_hard_edge_buffer: f32,
     perlin_soft_edge_buffer: f32,
     perlin_noise: Fbm<Perlin>,
@@ -27,14 +21,9 @@ pub(super) struct IslandProfile {
 
 impl IslandProfile {
     pub(super) fn new(kind: IslandType, seed: u32, point_count: usize) -> Self {
-        let mut rng = map_rng(seed as u64);
         let grid_width = (point_count as f32).sqrt().floor().max(1.0);
         Self {
             kind,
-            bumps: map_random_i32(&mut rng, 1..=6),
-            start_angle: map_random_f32(&mut rng, 0.0..2.0 * PI),
-            dip_angle: map_random_f32(&mut rng, 0.0..2.0 * PI),
-            dip_width: map_random_f32(&mut rng, 0.2..0.7),
             perlin_hard_edge_buffer: grid_cells_to_normalized_distance(
                 PERLIN_DEEP_OCEAN_EDGE_BUFFER_CELLS + PERLIN_SHALLOW_SHELF_CELLS,
                 grid_width,
@@ -50,25 +39,6 @@ impl IslandProfile {
 
     pub(super) fn inside(&self, q: Vec2) -> bool {
         match self.kind {
-            IslandType::Radial => {
-                let angle = q.y.atan2(q.x);
-                let length = 0.5 * (q.x.abs().max(q.y.abs()) + q.length());
-                let bumps = self.bumps as f32;
-                let mut r1 = 0.5
-                    + 0.40
-                        * (self.start_angle + bumps * angle + ((bumps + 3.0) * angle).cos()).sin();
-                let mut r2 = 0.7
-                    - 0.20
-                        * (self.start_angle + bumps * angle - ((bumps + 2.0) * angle).sin()).sin();
-                if (angle - self.dip_angle).abs() < self.dip_width
-                    || (angle - self.dip_angle + 2.0 * PI).abs() < self.dip_width
-                    || (angle - self.dip_angle - 2.0 * PI).abs() < self.dip_width
-                {
-                    r1 = 0.2;
-                    r2 = 0.2;
-                }
-                length < r1 || (length > r1 * 1.07 && length < r2)
-            }
             IslandType::Perlin => {
                 let c = sample_fractal_noise(
                     &self.perlin_noise,

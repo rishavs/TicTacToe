@@ -2,13 +2,36 @@ use super::biome::{biome_color, calculate_lighting, get_biome, interpolate_color
 use super::*;
 use std::collections::{HashMap, VecDeque};
 
+#[cfg(test)]
 pub(super) fn generate_map(
     seed_text: &str,
     island_type: IslandType,
     point_type: PointType,
     point_count: usize,
 ) -> PolyMap {
-    PolyMap::generate(seed_text, island_type, point_type, point_count)
+    generate_map_with_shallow_sea(
+        seed_text,
+        island_type,
+        point_type,
+        point_count,
+        DEFAULT_SHALLOW_SEA_SIZE,
+    )
+}
+
+pub(super) fn generate_map_with_shallow_sea(
+    seed_text: &str,
+    island_type: IslandType,
+    point_type: PointType,
+    point_count: usize,
+    shallow_sea_size: ShallowSeaSize,
+) -> PolyMap {
+    PolyMap::generate(
+        seed_text,
+        island_type,
+        point_type,
+        point_count,
+        shallow_sea_size,
+    )
 }
 impl PolyMap {
     fn generate(
@@ -16,6 +39,7 @@ impl PolyMap {
         island_type: IslandType,
         point_type: PointType,
         point_count: usize,
+        shallow_sea_size: ShallowSeaSize,
     ) -> Self {
         let (shape_seed, variant) = parse_seed(seed_text);
         let island_shape = IslandProfile::new(island_type, shape_seed, point_count);
@@ -23,7 +47,7 @@ impl PolyMap {
         let mut map = Self::from_points(points, point_count, variant, island_shape);
         map.assign_corner_elevations();
         map.assign_ocean_coast_and_land();
-        map.assign_ocean_depths();
+        map.assign_ocean_depths(shallow_sea_size);
         map.redistribute_elevations();
         map.assign_polygon_elevations();
         map.calculate_downslopes();
@@ -232,7 +256,7 @@ impl PolyMap {
         }
     }
 
-    fn assign_ocean_depths(&mut self) {
+    fn assign_ocean_depths(&mut self, shallow_sea_size: ShallowSeaSize) {
         let mut queue = VecDeque::new();
         for center in &mut self.centers {
             center.shallow_ocean = false;
@@ -268,8 +292,9 @@ impl PolyMap {
         for center in &mut self.centers {
             if center.ocean {
                 let jitter = shallow_ocean_jitter(center.point);
-                center.shallow_ocean =
-                    center.ocean_distance <= 1 || (center.ocean_distance == 2 && jitter > 0.4);
+                let guaranteed = shallow_sea_size.guaranteed_shallow_distance();
+                center.shallow_ocean = center.ocean_distance <= guaranteed
+                    || (center.ocean_distance == guaranteed + 1 && jitter > 0.4);
             }
         }
 
@@ -783,94 +808,46 @@ impl PolyMap {
         }
     }
 
-    pub(super) fn land_histogram(&self) -> Vec<(u32, f32)> {
-        let mut buckets = [0usize; 4];
-        for center in &self.centers {
-            let bucket = if center.ocean {
-                0
-            } else if center.coast {
-                1
-            } else if center.water {
-                2
-            } else {
-                3
-            };
-            buckets[bucket] += 1;
-        }
-        histogram_pairs(&[0x333866, 0xa09077, 0x336699, 0x679459], &buckets)
-    }
-
-    pub(super) fn biome_histogram(&self) -> Vec<(u32, f32)> {
-        let biomes = [
-            "DEEP_OCEAN",
-            "SHALLOW_OCEAN",
-            "BEACH",
-            "LAKE",
-            "ICE",
-            "MARSH",
-            "SNOW",
-            "TUNDRA",
-            "BARE",
-            "SCORCHED",
-            "TAIGA",
-            "SHRUBLAND",
-            "TEMPERATE_DESERT",
-            "TEMPERATE_RAIN_FOREST",
-            "TEMPERATE_DECIDUOUS_FOREST",
-            "GRASSLAND",
-            "SUBTROPICAL_DESERT",
-            "TROPICAL_RAIN_FOREST",
-            "TROPICAL_SEASONAL_FOREST",
-        ];
-        let mut buckets = vec![0usize; biomes.len()];
-        for center in &self.centers {
-            if let Some(index) = biomes.iter().position(|&biome| biome == center.biome) {
-                buckets[index] += 1;
-            }
-        }
-        biomes
+    pub(super) fn biome_counts(&self) -> Vec<BiomeCount> {
+        BIOME_DISPLAY_ORDER
             .iter()
-            .zip(buckets)
-            .map(|(&biome, count)| (biome_color(biome), count as f32))
-            .collect()
-    }
-
-    pub(super) fn elevation_histogram(&self) -> Vec<(u32, f32)> {
-        let mut buckets = [0usize; 10];
-        for center in &self.centers {
-            if !center.ocean {
-                let bucket = (center.elevation * 10.0).floor().clamp(0.0, 9.0) as usize;
-                buckets[bucket] += 1;
-            }
-        }
-        (0..10)
-            .map(|i| {
-                (
-                    interpolate_color(0x679459, 0x88aa55, i as f32 * 0.1),
-                    buckets[i] as f32,
-                )
-            })
-            .collect()
-    }
-
-    pub(super) fn moisture_histogram(&self) -> Vec<(u32, f32)> {
-        let mut buckets = [0usize; 10];
-        for center in &self.centers {
-            if !center.water {
-                let bucket = (center.moisture * 10.0).floor().clamp(0.0, 9.0) as usize;
-                buckets[bucket] += 1;
-            }
-        }
-        (0..10)
-            .map(|i| {
-                (
-                    interpolate_color(0xa09077, 0x225588, i as f32 * 0.1),
-                    buckets[i] as f32,
-                )
+            .filter_map(|&(biome, name)| {
+                let count = self
+                    .centers
+                    .iter()
+                    .filter(|center| center.biome == biome)
+                    .count();
+                (count > 0).then_some(BiomeCount {
+                    name,
+                    color: biome_color(biome),
+                    count,
+                })
             })
             .collect()
     }
 }
+
+const BIOME_DISPLAY_ORDER: [(&str, &str); 19] = [
+    ("DEEP_OCEAN", "Deep Ocean"),
+    ("SHALLOW_OCEAN", "Shallow Ocean"),
+    ("BEACH", "Beach"),
+    ("LAKE", "Lake"),
+    ("ICE", "Ice"),
+    ("MARSH", "Marsh"),
+    ("SNOW", "Snow"),
+    ("TUNDRA", "Tundra"),
+    ("BARE", "Bare"),
+    ("SCORCHED", "Scorched"),
+    ("TAIGA", "Taiga"),
+    ("SHRUBLAND", "Shrubland"),
+    ("TEMPERATE_DESERT", "Temperate Desert"),
+    ("TEMPERATE_RAIN_FOREST", "Temperate Rain Forest"),
+    ("TEMPERATE_DECIDUOUS_FOREST", "Temperate Deciduous Forest"),
+    ("GRASSLAND", "Grassland"),
+    ("SUBTROPICAL_DESERT", "Subtropical Desert"),
+    ("TROPICAL_RAIN_FOREST", "Tropical Rain Forest"),
+    ("TROPICAL_SEASONAL_FOREST", "Tropical Seasonal Forest"),
+];
 
 fn select_points(point_type: PointType, point_count: usize, _seed: u32) -> Vec<Vec2> {
     match point_type {
@@ -991,14 +968,6 @@ fn shallow_ocean_jitter(point: Vec2) -> f32 {
     hash ^= hash >> 15;
     hash = hash.wrapping_mul(0x846c_a68b);
     (hash ^ (hash >> 16)) as f32 / u32::MAX as f32
-}
-
-fn histogram_pairs(colors: &[u32], buckets: &[usize]) -> Vec<(u32, f32)> {
-    colors
-        .iter()
-        .zip(buckets)
-        .map(|(&color, &count)| (color, count as f32))
-        .collect()
 }
 
 fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {

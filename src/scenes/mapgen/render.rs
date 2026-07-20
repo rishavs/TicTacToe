@@ -24,7 +24,7 @@ pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: R
         layout.sidebar_rect.h,
         SIDEBAR_COLOR,
     );
-    draw_histograms(scene.map.as_ref(), layout.sidebar_rect);
+    draw_biome_list(scene.map.as_ref(), layout.sidebar_rect);
     draw_controls(scene, layout.sidebar_rect);
     draw_seed_field(scene, layout.sidebar_rect);
     draw_footer(scene, layout.sidebar_rect);
@@ -125,19 +125,18 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
     }
 }
 
-fn draw_histograms(map: Option<&PolyMap>, sidebar: Rect) {
-    let x = sidebar.x + 25.0;
-    let y = 230.0;
-    let width = (sidebar.w - 50.0).max(120.0);
+fn draw_biome_list(map: Option<&PolyMap>, sidebar: Rect) {
+    let x = sidebar.x + 18.0;
+    let mut y = 304.0;
 
-    draw_text("Distribution:", sidebar.x + 50.0, y, 18.0, BLACK);
+    draw_text("Biomes:", x, y, 18.0, BLACK);
     let Some(map) = map else {
         return;
     };
-    draw_distribution(x, y + 12.0, width, 18.0, &map.land_histogram());
-    draw_distribution(x, y + 36.0, width, 18.0, &map.biome_histogram());
-    draw_histogram(x, y + 88.0, width, 28.0, &map.elevation_histogram());
-    draw_histogram(x, y + 126.0, width, 18.0, &map.moisture_histogram());
+    for (index, entry) in map.biome_counts().iter().enumerate() {
+        y += 22.0;
+        draw_biome_count_row(x, y, index + 1, entry);
+    }
 }
 
 fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
@@ -155,10 +154,7 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
         ui.label(Some(vec2(52.0, 2.0)), "Island Shape:");
         ui.label(Some(vec2(4.0, 26.0)), "Shape #");
         if ui.button(Some(vec2(133.0, 22.0)), "Random") {
-            scene.seed_text = random_seed_text();
-            scene.seed_edit_text = scene.seed_text.clone();
-            scene.seed_input_active = false;
-            scene.seed_replace_on_type = false;
+            scene.apply_random_seed_text(random_seed_text());
             needs_regenerate = true;
         }
 
@@ -173,26 +169,18 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
     });
 
     widgets::Window::new(
-        hash!("mapgen_point_selection"),
+        hash!("mapgen_island_size"),
         vec2(x, 104.0),
-        vec2(232.0, 86.0),
+        vec2(232.0, 62.0),
     )
     .titlebar(false)
     .movable(false)
     .ui(&mut root_ui(), |ui| {
-        ui.label(Some(vec2(54.0, 2.0)), "Point Selection:");
-        for (index, point_type) in PointType::ALL.into_iter().enumerate() {
-            let button_x = [0.0][index];
-            let label = selected_label(point_type.label(), point_type == scene.point_type);
-            if ui.button(Some(vec2(button_x, 28.0)), label.as_str()) {
-                scene.point_type = point_type;
-                needs_regenerate = true;
-            }
-        }
+        ui.label(Some(vec2(72.0, 2.0)), "Island Size:");
         for (index, count) in POINT_COUNTS.into_iter().enumerate() {
             let button_x = [0.0, 56.0, 112.0, 168.0][index];
             let label = selected_label(&count.to_string(), count == scene.point_count);
-            if ui.button(Some(vec2(button_x, 58.0)), label.as_str()) {
+            if ui.button(Some(vec2(button_x, 28.0)), label.as_str()) {
                 scene.point_count = count;
                 needs_regenerate = true;
             }
@@ -200,8 +188,28 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
     });
 
     widgets::Window::new(
+        hash!("mapgen_shallow_sea"),
+        vec2(x, 178.0),
+        vec2(232.0, 86.0),
+    )
+    .titlebar(false)
+    .movable(false)
+    .ui(&mut root_ui(), |ui| {
+        ui.label(Some(vec2(72.0, 2.0)), "Shallow Sea:");
+        for (index, size) in ShallowSeaSize::ALL.into_iter().enumerate() {
+            let button_x = [0.0, 60.0, 120.0, 0.0][index];
+            let button_y = [28.0, 28.0, 28.0, 56.0][index];
+            let label = selected_label(size.label(), size == scene.shallow_sea_size);
+            if ui.button(Some(vec2(button_x, button_y)), label.as_str()) {
+                scene.shallow_sea_size = size;
+                needs_regenerate = true;
+            }
+        }
+    });
+
+    widgets::Window::new(
         hash!("mapgen_view"),
-        vec2(x + 12.0, 390.0),
+        vec2(x + 12.0, 666.0),
         vec2(200.0, 62.0),
     )
     .titlebar(false)
@@ -259,41 +267,17 @@ fn draw_footer(scene: &MapgenScene, sidebar: Rect) {
     draw_text(&scene.status, sidebar.x + 16.0, 744.0, 16.0, BLACK);
 }
 
-fn draw_distribution(x: f32, y: f32, width: f32, height: f32, buckets: &[(u32, f32)]) {
-    let total: f32 = buckets.iter().map(|(_, count)| *count).sum();
-    if total <= 0.0 {
-        return;
-    }
-    let mut cursor = x;
-    for &(color, count) in buckets {
-        if count <= 0.0 {
-            continue;
-        }
-        let w = count / total * width;
-        draw_rectangle(cursor, y, (w - 1.0).max(0.0), height, color_from_u32(color));
-        cursor += w;
-    }
-}
-
-fn draw_histogram(x: f32, y: f32, width: f32, height: f32, buckets: &[(u32, f32)]) {
-    let max_count = buckets
-        .iter()
-        .map(|(_, count)| *count)
-        .fold(0.0_f32, f32::max);
-    if max_count <= 0.0 {
-        return;
-    }
-    let bar_w = width / buckets.len() as f32;
-    for (index, &(color, count)) in buckets.iter().enumerate() {
-        let h = height * count / max_count;
-        draw_rectangle(
-            x + index as f32 * bar_w,
-            y + height - h,
-            (bar_w - 1.0).max(0.0),
-            h,
-            color_from_u32(color),
-        );
-    }
+fn draw_biome_count_row(x: f32, y: f32, number: usize, entry: &BiomeCount) {
+    draw_text(&format!("{}.", number), x, y + 12.0, 14.0, BLACK);
+    draw_rectangle(x + 22.0, y, 12.0, 12.0, color_from_u32(entry.color));
+    draw_rectangle_lines(x + 22.0, y, 12.0, 12.0, 1.0, BLACK);
+    draw_text(
+        &format!("{} - {}", entry.name, entry.count),
+        x + 40.0,
+        y + 12.0,
+        14.0,
+        BLACK,
+    );
 }
 
 fn center_visible(center: &Center, source_rect: Rect) -> bool {
