@@ -22,6 +22,8 @@ fn map_fingerprint(map: &PolyMap) -> u64 {
         hash_point(&mut hasher, center.point);
         center.water.hash(&mut hasher);
         center.ocean.hash(&mut hasher);
+        center.shallow_ocean.hash(&mut hasher);
+        center.ocean_distance.hash(&mut hasher);
         center.coast.hash(&mut hasher);
         center.border.hash(&mut hasher);
         center.biome.hash(&mut hasher);
@@ -109,6 +111,17 @@ fn seed_input_hitbox_matches_demo_panel_position() {
     assert!(field.contains(vec2(848.0, 29.0)));
     assert!(field.contains(vec2(912.0, 51.0)));
     assert!(!field.contains(vec2(846.0, 29.0)));
+}
+
+#[test]
+fn wide_mapgen_layout_centers_square_map_in_map_area() {
+    let layout = mapgen_layout(1536.0, 768.0);
+
+    assert_eq!(layout.sidebar_rect.x, 1276.0);
+    assert_eq!(layout.map_rect.x, 254.0);
+    assert_eq!(layout.map_rect.y, 0.0);
+    assert_eq!(layout.map_rect.w, 768.0);
+    assert_eq!(layout.map_rect.h, 768.0);
 }
 
 #[test]
@@ -235,17 +248,27 @@ fn library_noise_wrappers_are_deterministic_and_seeded() {
 fn zoom_source_rect_crops_around_pan() {
     let rect = map_source_rect(vec2(64.0, -32.0), 2.0);
 
-    assert_eq!(rect.w, 300.0);
-    assert_eq!(rect.h, 300.0);
-    assert_eq!(rect.x, 214.0);
-    assert_eq!(rect.y, 118.0);
+    assert_eq!(rect.w, 337.5);
+    assert_eq!(rect.h, 337.5);
+    assert_eq!(rect.x, 195.25);
+    assert_eq!(rect.y, 99.25);
+}
+
+#[test]
+fn zoomed_out_source_rect_includes_ocean_border() {
+    let rect = map_source_rect(Vec2::ZERO, MIN_ZOOM);
+
+    assert_eq!(rect.x, -37.5);
+    assert_eq!(rect.y, -37.5);
+    assert_eq!(rect.w, 675.0);
+    assert_eq!(rect.h, 675.0);
 }
 
 #[test]
 fn pan_is_clamped_to_visible_map_bounds() {
     let pan = clamp_pan(vec2(999.0, -999.0), 4.0);
 
-    assert_eq!(pan, vec2(225.0, -225.0));
+    assert_eq!(pan, vec2(253.125, -253.125));
 }
 
 #[test]
@@ -500,15 +523,73 @@ fn biome_categories_match_water_state() {
 
     for center in &map.centers {
         if center.ocean {
-            assert_eq!(center.biome, "OCEAN");
+            assert!(matches!(center.biome, "SHALLOW_OCEAN" | "DEEP_OCEAN"));
         } else if center.water {
             assert!(matches!(center.biome, "MARSH" | "ICE" | "LAKE"));
         } else if center.coast {
             assert_eq!(center.biome, "BEACH");
         } else {
-            assert!(!matches!(center.biome, "OCEAN" | "MARSH" | "ICE" | "LAKE"));
+            assert!(!matches!(
+                center.biome,
+                "OCEAN" | "SHALLOW_OCEAN" | "DEEP_OCEAN" | "MARSH" | "ICE" | "LAKE"
+            ));
         }
     }
+}
+
+#[test]
+fn ocean_biomes_split_into_shallow_and_deep() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(
+        map.centers
+            .iter()
+            .any(|center| center.biome == "SHALLOW_OCEAN")
+    );
+    assert!(
+        map.centers
+            .iter()
+            .any(|center| center.biome == "DEEP_OCEAN")
+    );
+    assert!(
+        map.centers
+            .iter()
+            .filter(|center| center.ocean)
+            .all(|center| matches!(center.biome, "SHALLOW_OCEAN" | "DEEP_OCEAN"))
+    );
+}
+
+#[test]
+fn shallow_ocean_stays_closer_to_land_than_deep_ocean() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    let shallow_touching_land = map.centers.iter().any(|center| {
+        center.biome == "SHALLOW_OCEAN"
+            && center
+                .neighbors
+                .iter()
+                .any(|&neighbor| !map.centers[neighbor].water)
+    });
+    let deep_touching_land = map.centers.iter().any(|center| {
+        center.biome == "DEEP_OCEAN"
+            && center
+                .neighbors
+                .iter()
+                .any(|&neighbor| !map.centers[neighbor].water)
+    });
+
+    assert!(shallow_touching_land);
+    assert!(!deep_touching_land);
 }
 
 #[test]

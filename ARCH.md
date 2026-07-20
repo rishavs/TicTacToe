@@ -9,13 +9,14 @@
 - **Engine/toolkit:** Macroquad 0.4.15
 - **Procedural noise:** `noise`
 - **Seeded randomness:** Macroquad's owned `macroquad::rand::RandGenerator`
+- **Desktop window polish:** Windows-only startup maximize hook via `windows-sys`
 - **Current focus:** Scene shell plus procedural map-generation viewer
 
 ## Module Layout
 
 ```text
 src/
-  main.rs              - Macroquad config, main loop, scene dispatch, screenshot capture
+  main.rs              - Macroquad config, maximized startup, main loop, scene dispatch, screenshot capture
   scenes/
     mod.rs             - Scene enum
     menu.rs            - Main menu and scene navigation buttons
@@ -48,7 +49,7 @@ Macroquad window setup
        next_frame().await
 ```
 
-`src/main.rs` owns the frame loop. Each scene module exposes `pub fn update() -> Option<Scene>`. Returning `Some(scene)` changes scenes; returning `None` keeps the current scene active.
+`src/main.rs` owns the frame loop. On Windows it asks the OS to maximize the normal resizable window once after Macroquad creates it; this is intentionally not fullscreen. Each scene module exposes `pub fn update() -> Option<Scene>`. Returning `Some(scene)` changes scenes; returning `None` keeps the current scene active.
 
 ## Scenes
 
@@ -66,12 +67,12 @@ Macroquad window setup
 
 - `MapgenScene` stores selected seed, island type, point type, point count, view mode, current generated map, pending generation job, pan, zoom, and status.
 - `PolyMap` stores generated centers, corners, edges, noisy edges, and histogram data in `mapgen/model.rs`.
-- `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer.
+- `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer. Centers also store ocean depth classification state, including `shallow_ocean` and `ocean_distance`.
 - `IslandType` supports radial, perlin, and simplex shaping.
 - `PointType` currently supports square point layout.
 - `ViewMode` supports biome and slope-style debug views.
-- Seed parsing lives in `mapgen/seed.rs`; pan/zoom math remains in the scene shell; biome classification lives in `mapgen/biome.rs`; graph generation lives in `mapgen/generate.rs`.
-- Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps.
+- Seed parsing lives in `mapgen/seed.rs`; pan/zoom math remains in the scene shell; biome classification lives in `mapgen/biome.rs`; graph generation and ocean-depth assignment live in `mapgen/generate.rs`.
+- Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps. The map viewport includes a small deep-ocean border outside the generated 600x600 map so shallow water has breathing room at the screen edge. In wide windows, the square map is centered inside an ocean-backed map area instead of stretching or leaving unused white space.
 - Regeneration runs on a background worker thread and sends the finished `PolyMap` back to the scene through a channel. The previous map remains visible while a new map is building.
 - `noise` supplies Perlin/fBm and OpenSimplex noise; small local wrappers normalize output into the mapgen-friendly `0.0..=1.0` range.
 - `IslandProfile` caches reusable noise generators so map sampling does not recreate noise objects per corner.
@@ -91,12 +92,13 @@ This is intentional for the current Macroquad scene model: the mapgen scene keep
 debug env / UI controls
   -> MapgenScene::regenerate
   -> background worker calls PolyMap::generate(seed, island type, point type, point count)
-  -> graph construction, elevation, moisture, rivers, biomes, noisy edges
+  -> graph construction, elevation, ocean/coast/land assignment
+  -> ocean-depth assignment, moisture, rivers, biomes, noisy edges
   -> worker sends completed PolyMap over channel
-  -> render module draws visible polygons and overlays through Macroquad
+  -> render module draws visible polygons into a padded deep-ocean viewport through Macroquad
 ```
 
-Generation is deterministic for the same seed and options. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, and drainage behavior.
+Generation is deterministic for the same seed and options. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories, shallow/deep ocean placement, and drainage behavior.
 
 ## Debug Launch And Capture
 

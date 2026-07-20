@@ -23,6 +23,7 @@ impl PolyMap {
         let mut map = Self::from_points(points, point_count, variant, island_shape);
         map.assign_corner_elevations();
         map.assign_ocean_coast_and_land();
+        map.assign_ocean_depths();
         map.redistribute_elevations();
         map.assign_polygon_elevations();
         map.calculate_downslopes();
@@ -52,6 +53,8 @@ impl PolyMap {
                 point,
                 water: false,
                 ocean: false,
+                shallow_ocean: false,
+                ocean_distance: -1,
                 coast: false,
                 border: false,
                 biome: "OCEAN",
@@ -226,6 +229,48 @@ impl PolyMap {
             self.corners[q].coast = num_ocean > 0 && num_land > 0;
             self.corners[q].water =
                 self.corners[q].border || ((num_land != touches) && !self.corners[q].coast);
+        }
+    }
+
+    fn assign_ocean_depths(&mut self) {
+        let mut queue = VecDeque::new();
+        for center in &mut self.centers {
+            center.shallow_ocean = false;
+            center.ocean_distance = -1;
+        }
+
+        for center_id in 0..self.centers.len() {
+            if !self.centers[center_id].ocean {
+                continue;
+            }
+            let touches_land = self.centers[center_id]
+                .neighbors
+                .iter()
+                .any(|&neighbor| !self.centers[neighbor].water);
+            if touches_land {
+                self.centers[center_id].ocean_distance = 0;
+                queue.push_back(center_id);
+            }
+        }
+
+        while let Some(center_id) = queue.pop_front() {
+            let next_distance = self.centers[center_id].ocean_distance + 1;
+            let neighbors = self.centers[center_id].neighbors.clone();
+            for neighbor in neighbors {
+                if !self.centers[neighbor].ocean || self.centers[neighbor].ocean_distance >= 0 {
+                    continue;
+                }
+                self.centers[neighbor].ocean_distance = next_distance;
+                queue.push_back(neighbor);
+            }
+        }
+
+        for center in &mut self.centers {
+            if center.ocean {
+                let jitter = shallow_ocean_jitter(center.point);
+                center.shallow_ocean =
+                    center.ocean_distance <= 1 || (center.ocean_distance == 2 && jitter > 0.4);
+            }
         }
     }
 
@@ -558,11 +603,13 @@ impl PolyMap {
             };
             buckets[bucket] += 1;
         }
-        histogram_pairs(&[0x44447a, 0xa09077, 0x336699, 0x679459], &buckets)
+        histogram_pairs(&[0x333866, 0xa09077, 0x336699, 0x679459], &buckets)
     }
 
     pub(super) fn biome_histogram(&self) -> Vec<(u32, f32)> {
         let biomes = [
+            "DEEP_OCEAN",
+            "SHALLOW_OCEAN",
             "BEACH",
             "LAKE",
             "ICE",
@@ -739,6 +786,17 @@ fn improve_corners(centers: &mut [Center], corners: &mut [Corner], edges: &mut [
             edge.midpoint = (corners[v0].point + corners[v1].point) * 0.5;
         }
     }
+}
+
+fn shallow_ocean_jitter(point: Vec2) -> f32 {
+    let x = (point.x / MAP_SIZE * 17.0).floor() as i32;
+    let y = (point.y / MAP_SIZE * 17.0).floor() as i32;
+    let mut hash = (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841);
+    hash ^= hash >> 16;
+    hash = hash.wrapping_mul(0x7feb_352d);
+    hash ^= hash >> 15;
+    hash = hash.wrapping_mul(0x846c_a68b);
+    (hash ^ (hash >> 16)) as f32 / u32::MAX as f32
 }
 
 fn histogram_pairs(colors: &[u32], buckets: &[usize]) -> Vec<(u32, f32)> {

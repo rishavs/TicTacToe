@@ -26,6 +26,7 @@
 - [x] Macroquad window configured in `src/main.rs`
 - [x] Window title renamed to TicTacToe
 - [x] Main loop dispatches through the `Scene` enum
+- [x] Windows desktop startup maximizes the normal resizable window without switching to fullscreen
 - [x] Debug start scene uses `TICTACTOE_START_SCENE`
 - [x] Screenshot capture uses `TICTACTOE_SCREENSHOT` and `TICTACTOE_SCREENSHOT_FRAMES`
 
@@ -54,12 +55,15 @@
 - [x] Point count options: 4000, 8000, 16000, 32000
 - [x] View modes include biome and slopes
 - [x] Pan and zoom support
+- [x] Zoomed-out map viewport includes deep-ocean padding around the generated map
+- [x] Wide mapgen windows center the square map inside an ocean-backed map area
 - [x] Deterministic generation tests
 - [x] Custom hand-rolled noise internals replaced with the `noise` crate
 - [x] Island profile caches reusable noise generators for much faster generation
 - [x] Custom hand-rolled PRNG replaced with Macroquad's owned RNG
 - [x] Renderer iterates center borders and edges directly instead of repeatedly searching neighbor edges
-- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, and drainage-loop behavior
+- [x] Ocean biome split into shallow and deep ocean, with shallow water following the island coastline using deterministic coast-distance jitter
+- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, and drainage-loop behavior
 
 ## Removed / Stale Items
 

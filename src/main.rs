@@ -9,6 +9,8 @@ fn window_conf() -> Conf {
         window_title: "TicTacToe".to_owned(),
         window_width: 1024,
         window_height: 768,
+        fullscreen: false,
+        window_resizable: true,
         ..Default::default()
     }
 }
@@ -17,8 +19,14 @@ fn window_conf() -> Conf {
 async fn main() {
     let mut scene = debug_start_scene().unwrap_or(Scene::MainMenu);
     let mut debug_capture = DebugCapture::from_env();
+    let mut startup_window_maximized = false;
 
     loop {
+        if !startup_window_maximized {
+            maximize_startup_window();
+            startup_window_maximized = true;
+        }
+
         let next = match scene {
             Scene::MainMenu => scenes::menu::update(),
             Scene::Play => scenes::play::update(),
@@ -39,6 +47,33 @@ async fn main() {
     }
 }
 
+fn start_window_maximized() -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn maximize_startup_window() {
+    if !start_window_maximized() {
+        return;
+    }
+
+    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SW_MAXIMIZE, ShowWindow};
+
+    let mut title: Vec<u16> = window_conf().window_title.encode_utf16().collect();
+    title.push(0);
+    unsafe {
+        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+        if !hwnd.is_null() {
+            ShowWindow(hwnd, SW_MAXIMIZE);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn maximize_startup_window() {
+    let _ = start_window_maximized();
+}
+
 fn debug_start_scene() -> Option<Scene> {
     match std::env::var("TICTACTOE_START_SCENE")
         .ok()?
@@ -51,6 +86,20 @@ fn debug_start_scene() -> Option<Scene> {
         "settings" => Some(Scene::Settings),
         "menu" => Some(Scene::MainMenu),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_starts_maximized_without_fullscreen() {
+        let conf = window_conf();
+
+        assert!(start_window_maximized());
+        assert!(!conf.fullscreen);
+        assert!(conf.window_resizable);
     }
 }
 

@@ -18,6 +18,7 @@ The project is temporarily named TicTacToe. Existing map-generation work is stil
 3. Placeholder scenes show their scene name and return to the menu with Escape.
 4. Mapgen opens an interactive procedural island viewer.
 5. Mapgen users can adjust seed/options, regenerate, pan, zoom, and switch debug views.
+6. On desktop, the game starts in a maximized normal window for easier map inspection.
 
 ## Implemented Scenes
 
@@ -50,9 +51,17 @@ Current generation concepts:
 - Island profile shaping.
 - Elevation and moisture assignment.
 - River/drainage handling.
-- Biome classification.
+- Biome classification, including separate shallow and deep ocean biomes.
 - Noisy edge paths for more organic region boundaries.
 - Color interpolation and biome palettes for rendering.
+
+Ocean design:
+
+- Deep ocean represents open water farther away from land.
+- Shallow ocean follows the island coastline roughly, but not exactly.
+- The shallow band is based on ocean distance from land plus deterministic map-space jitter, so the same seed always produces the same coastal shelf.
+- Shallow/deep ocean are visual and classification states only for now; they do not yet affect movement, combat, resources, or win/loss rules.
+- The map viewport includes deep-ocean breathing room beyond the generated map edge, so shallow ocean does not sit directly against the visible frame.
 
 ## Combat, Rules, And Progression
 
@@ -75,5 +84,6 @@ Before adding gameplay rules, decide whether this project should become:
 
 - Same seed plus same mapgen options should produce the same result.
 - Rendering should remain responsive while inspecting generated maps.
+- Map inspection should start with a generous viewport: maximized desktop window and visible ocean padding at the map edge.
 - Placeholder scenes should stay simple until they receive real rules.
 - Documentation should describe the current Rust/Macroquad project, not the removed Go/Ebiten version.

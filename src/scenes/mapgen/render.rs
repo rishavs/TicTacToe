@@ -3,6 +3,13 @@ use macroquad::ui::widgets;
 use macroquad::ui::{hash, root_ui};
 
 pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: Rect) {
+    draw_rectangle(
+        layout.map_area_rect.x,
+        layout.map_area_rect.y,
+        layout.map_area_rect.w,
+        layout.map_area_rect.h,
+        color_from_u32(0x333866),
+    );
     draw_map(
         scene.map.as_ref(),
         scene.view_mode,
@@ -28,7 +35,7 @@ fn draw_map(map: Option<&PolyMap>, view_mode: ViewMode, map_rect: Rect, source_r
         map_rect.y,
         map_rect.w,
         map_rect.h,
-        color_from_u32(0x44447a),
+        color_from_u32(0x333866),
     );
 
     if let Some(map) = map {
