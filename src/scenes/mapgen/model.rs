@@ -10,6 +10,8 @@ pub(super) struct Center {
     pub(super) ocean: bool,
     pub(super) shallow_ocean: bool,
     pub(super) ocean_distance: i32,
+    pub(super) river: bool,
+    pub(super) river_size: i32,
     pub(super) coast: bool,
     pub(super) border: bool,
     pub(super) biome: &'static str,

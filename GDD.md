@@ -38,7 +38,7 @@ Current controls:
 
 - Seed text input, with random seed generation.
 - Island shape: perlin and simplex.
-- Island size: 4000, 8000, 16000, 32000 square-layout cells.
+- Island size: 16000, 32000, 64000, 128000 square-layout cells.
 - Shallow sea size: narrow, normal, wide.
 - Bay rounding: light, normal, strong.
 - View mode: biome and slope-oriented debug rendering.
@@ -52,8 +52,8 @@ Current generation concepts:
 - Center/corner/edge graph linking.
 - Island profile shaping.
 - Elevation and moisture assignment.
-- River/drainage handling.
-- Biome classification, including separate shallow and deep ocean biomes.
+- River/drainage handling that produces `River` base biome cells.
+- Biome classification, including separate shallow ocean, deep ocean, lake, marsh, and river water biomes.
 - Current land biome vocabulary includes snow, tundra, highlands, peak, taiga, shrubland, rocky plains, forest, meadow, grassland, desert, rainforest, and woodland.
 - Noisy edge paths for more organic region boundaries.
 - Color interpolation and biome palettes for rendering.
@@ -66,7 +66,8 @@ Ocean design:
 - Narrow deep-ocean fingers and concave deep-water inlets inside bays can be rounded into shallow ocean with the bay rounding control. `Light` is the default; `Normal` and `Strong` progressively close larger bites. The cleanup closes the land-plus-shallow-water mask, trims exposed edges back, then fills any remaining near-land pinches. This is intended to make the shallow boundary read as a rounded shelf rather than a concave polygon, while keeping border-connected open deep ocean as the impassable boundary.
 - Small deep-ocean pockets fully enclosed by shallow ocean are treated as shallow ocean; open/border-connected deep ocean remains deep.
 - Every island is connected back to the mainland through shallow ocean corridors. Corridor thickness scales with island size to avoid fragile one-cell bridge threads while keeping deep ocean as an impassable boundary.
-- Shallow/deep ocean are classification states only for now; they do not yet affect implemented movement, combat, resources, or win/loss rules.
+- River cells are base biome tiles rather than decorative edge lines. They are intended to support future boat movement and Tiled export as real terrain. River width is capped at one to three cells, with weak streams using one cell and stronger confluences widening modestly.
+- Shallow/deep ocean and river cells are classification states only for now; they do not yet affect implemented movement, combat, resources, or win/loss rules.
 - Perlin maps keep land away from the generated map edge with an edge-distance falloff, leaving about five cells of deep-ocean buffer outside the shallow shelf without increasing grid size.
 - Simplex maps keep their current island scale; their shape uses threshold constants rather than the Perlin cell-buffer rule.
 

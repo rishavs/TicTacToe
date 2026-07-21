@@ -67,7 +67,7 @@ Macroquad window setup
 
 - `MapgenScene` stores selected seed, island type, point type, point count, shallow sea size, bay rounding strength, view mode, current generated map, pending generation job, pan, and zoom.
 - `PolyMap` stores generated centers, corners, edges, noisy edges, and biome count data in `mapgen/model.rs`.
-- `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer. Centers also store ocean depth classification state, including `shallow_ocean` and `ocean_distance`.
+- `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer. Centers also store export-facing terrain state such as ocean depth, river tiles, and biome classification.
 - `IslandType` supports perlin and simplex shaping.
 - `PointType` currently supports square point layout as an always-on internal setting.
 - `ViewMode` supports biome and slope-style debug views.
@@ -93,12 +93,12 @@ debug env / UI controls
   -> MapgenScene::regenerate
   -> background worker calls PolyMap::generate(seed, island type, point type, point count, shallow sea size, bay rounding)
   -> graph construction, elevation, Perlin edge-buffer shaping, ocean/coast/land assignment
-  -> ocean-depth assignment, shallow-sea concavity closing, and shallow bridge cleanup, moisture, rivers, biomes, noisy edges
+  -> ocean-depth assignment, shallow-sea concavity closing, shallow bridge cleanup, edge rivers, river terrain cells, moisture, biomes, noisy edges
   -> worker sends completed PolyMap over channel
   -> render module draws visible polygons into the square map viewport through Macroquad
 ```
 
-Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about five edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named threshold constants rather than the Perlin cell-buffer rule. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. The shallow sea size control increases the coastline-distance shelf threshold; `Wide` is the default/current baseline. Bay rounding is a separate control with `Light`, `Normal`, and `Strong` presets; `Light` is the default. Shallow-sea cleanup treats land plus shallow ocean as an inside mask, applies a square-grid close-and-trim pass, then fills any remaining near-land pinches. This fills concave deep-ocean inlets and thin fingers along the shallow boundary according to the selected strength while preserving border-connected open deep ocean. Any enclosed deep-ocean component fully surrounded by shallow ocean is promoted to shallow. A topology cleanup then treats the largest passable land/shallow component as the mainland and carves minimal non-border shallow-ocean corridors to disconnected islands. Corridor thickness scales with the target island's landmass size, so islands stay reachable without thin one-cell threads or wholesale deep-ocean conversion. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories and counts, Perlin edge buffering, shallow/deep ocean placement, bay rounding strength, mask-based bay concavity cleanup, high-resolution Perlin/Narrow and Simplex/Narrow shallow boundaries, enclosed deep-ocean cleanup, island-to-mainland shallow connectivity, anti-thread bridge corridors, and drainage behavior.
+Generation is deterministic for the same seed and options. Perlin maps apply an edge-distance land falloff so about five edge cells remain deep ocean after the shallow shelf is assigned, without expanding the grid. Simplex keeps its current island size and uses named threshold constants rather than the Perlin cell-buffer rule. Ocean depth is assigned with a breadth-first distance from land through connected ocean centers, then softened with deterministic coordinate jitter so shallow water follows the island shape without becoming an exact outline. The shallow sea size control increases the coastline-distance shelf threshold; `Wide` is the default/current baseline. Bay rounding is a separate control with `Light`, `Normal`, and `Strong` presets; `Light` is the default. Shallow-sea cleanup treats land plus shallow ocean as an inside mask, applies a square-grid close-and-trim pass, then fills any remaining near-land pinches. This fills concave deep-ocean inlets and thin fingers along the shallow boundary according to the selected strength while preserving border-connected open deep ocean. Any enclosed deep-ocean component fully surrounded by shallow ocean is promoted to shallow. A topology cleanup then treats the largest passable land/shallow component as the mainland and carves minimal non-border shallow-ocean corridors to disconnected islands. Corridor thickness scales with the target island's landmass size, so islands stay reachable without thin one-cell threads or wholesale deep-ocean conversion. Rivers are still generated from corner downslopes and edge river strengths, then stamped into non-ocean center cells as `RIVER` base biome terrain for future tile export and boat movement. River terrain width is capped at one to three cells so weak streams stay narrow while confluences can widen modestly. The test suite includes checks for seed parsing, layout math, point generation, determinism, graph links, elevation/moisture ranges, biome categories and counts, Perlin edge buffering, shallow/deep ocean placement, river terrain cells and width caps, bay rounding strength, mask-based bay concavity cleanup, high-resolution Perlin/Narrow and Simplex/Narrow shallow boundaries, enclosed deep-ocean cleanup, island-to-mainland shallow connectivity, anti-thread bridge corridors, and drainage behavior.
 
 ## Debug Launch And Capture
 
@@ -126,7 +126,7 @@ Mapgen controls:
 $env:TICTACTOE_MAPGEN_SEED = "85882-8"
 $env:TICTACTOE_MAPGEN_ISLAND = "perlin"
 $env:TICTACTOE_MAPGEN_POINTS = "square"
-$env:TICTACTOE_MAPGEN_COUNT = "4000"
+$env:TICTACTOE_MAPGEN_COUNT = "16000"
 $env:TICTACTOE_MAPGEN_SHALLOW_SEA = "wide"
 $env:TICTACTOE_MAPGEN_BAY_ROUNDING = "light"
 $env:TICTACTOE_MAPGEN_VIEW = "biomes"

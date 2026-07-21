@@ -225,10 +225,10 @@ impl BayRounding {
     }
 }
 
-const POINT_COUNTS: [usize; 4] = [4000, 8000, 16000, 32000];
+const POINT_COUNTS: [usize; 4] = [16000, 32000, 64000, 128000];
 const DEFAULT_ISLAND_TYPE: IslandType = IslandType::Perlin;
 const DEFAULT_POINT_TYPE: PointType = PointType::Square;
-const DEFAULT_POINT_COUNT: usize = 4000;
+const DEFAULT_POINT_COUNT: usize = 16000;
 const DEFAULT_SHALLOW_SEA_SIZE: ShallowSeaSize = ShallowSeaSize::Wide;
 const DEFAULT_BAY_ROUNDING: BayRounding = BayRounding::Light;
 const DEFAULT_VIEW_MODE: ViewMode = ViewMode::Biome;

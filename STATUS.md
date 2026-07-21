@@ -53,7 +53,7 @@
 - [x] Debug environment controls renamed to `TICTACTOE_MAPGEN_*`
 - [x] Island shape options: perlin, simplex
 - [x] Square point layout kept as the always-on internal layout
-- [x] Island size options: 4000, 8000, 16000, 32000
+- [x] Island size options: 16000, 32000, 64000, 128000
 - [x] Shallow sea size options: narrow, normal, wide, with wide as the default
 - [x] Bay rounding options: light, normal, strong, with light as the default
 - [x] View modes include biome and slopes
@@ -67,11 +67,12 @@
 - [x] Custom hand-rolled PRNG replaced with Macroquad's owned RNG
 - [x] Renderer iterates center borders and edges directly instead of repeatedly searching neighbor edges
 - [x] Ocean biome split into shallow and deep ocean, with shallow water following the island coastline using deterministic coast-distance jitter
+- [x] Edge-generated rivers are stamped into one-to-three-cell-wide `River` base biome cells for future tile export and boat movement
 - [x] Shallow sea size control adjusts shallow water around the wide default while preserving deep ocean
 - [x] Narrow deep-ocean fingers and broad concave bay inlets are rounded into shallow ocean with adjustable mask-closing strength
 - [x] Enclosed deep-ocean pockets fully surrounded by shallow ocean are promoted to shallow without removing open deep ocean
 - [x] Disconnected islands are joined to the mainland with island-size shallow-ocean corridors while preserving border-connected deep ocean
-- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, bay rounding controls, mask-based bay concavity cleanup, high-resolution Perlin/Simplex shallow boundaries, island shallow connectivity, anti-thread bridge corridors, and drainage-loop behavior
+- [x] Tests cover layout math, seed parsing, point generation, graph links, elevation/moisture normalization, biome categories, shallow/deep ocean placement, river base biome cells and width caps, bay rounding controls, mask-based bay concavity cleanup, high-resolution Perlin/Simplex shallow boundaries, island shallow connectivity, anti-thread bridge corridors, and drainage-loop behavior
 
 ## Removed / Stale Items
 

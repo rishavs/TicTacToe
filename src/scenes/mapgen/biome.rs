@@ -10,6 +10,8 @@ pub(super) fn get_biome(center: &Center) -> &'static str {
         } else {
             "DEEP_OCEAN"
         }
+    } else if center.river {
+        "RIVER"
     } else if center.water {
         if center.elevation < 0.1 {
             "MARSH"

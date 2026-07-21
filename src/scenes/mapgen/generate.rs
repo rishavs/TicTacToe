@@ -60,6 +60,7 @@ impl PolyMap {
         map.calculate_downslopes();
         map.calculate_watersheds();
         map.create_rivers();
+        map.assign_river_cells();
         map.assign_corner_moisture();
         map.redistribute_moisture();
         map.assign_polygon_moisture();
@@ -86,6 +87,8 @@ impl PolyMap {
                 ocean: false,
                 shallow_ocean: false,
                 ocean_distance: -1,
+                river: false,
+                river_size: 0,
                 coast: false,
                 border: false,
                 biome: "OCEAN",
@@ -986,6 +989,82 @@ impl PolyMap {
         }
     }
 
+    fn assign_river_cells(&mut self) {
+        for center in &mut self.centers {
+            center.river = false;
+            center.river_size = 0;
+        }
+
+        for edge_id in 0..self.edges.len() {
+            let river_strength = self.edges[edge_id].river;
+            if river_strength <= 0 {
+                continue;
+            }
+
+            let river_width = river_tile_width(river_strength);
+            let cells = self.river_cells_for_edge(edge_id, river_width);
+            // Edge rivers drive drainage; center rivers are the tile terrain used by gameplay/export.
+            for center_id in cells {
+                self.mark_river_center(center_id, river_width);
+            }
+        }
+    }
+
+    fn river_cells_for_edge(&self, edge_id: usize, river_width: i32) -> Vec<usize> {
+        let edge = &self.edges[edge_id];
+        let mut sides: Vec<_> = [edge.d0, edge.d1]
+            .into_iter()
+            .flatten()
+            .filter(|&center_id| !self.centers[center_id].ocean)
+            .collect();
+        sides.sort_by(|&a, &b| {
+            self.centers[a]
+                .elevation
+                .total_cmp(&self.centers[b].elevation)
+        });
+
+        let mut cells = Vec::new();
+        if let Some(&primary) = sides.first() {
+            cells.push(primary);
+        }
+        if river_width >= 2
+            && let Some(&secondary) = sides.iter().find(|&&center_id| !cells.contains(&center_id))
+        {
+            cells.push(secondary);
+        }
+        if river_width >= 3
+            && let Some(extra) = self.nearest_river_neighbor(edge.midpoint, &cells)
+        {
+            cells.push(extra);
+        }
+
+        cells
+    }
+
+    fn nearest_river_neighbor(&self, point: Vec2, cells: &[usize]) -> Option<usize> {
+        cells
+            .iter()
+            .flat_map(|&center_id| self.centers[center_id].neighbors.iter().copied())
+            .filter(|center_id| !cells.contains(center_id) && !self.centers[*center_id].ocean)
+            .min_by(|&a, &b| {
+                self.centers[a]
+                    .point
+                    .distance_squared(point)
+                    .total_cmp(&self.centers[b].point.distance_squared(point))
+            })
+    }
+
+    fn mark_river_center(&mut self, center_id: usize, river_width: i32) {
+        let center = &mut self.centers[center_id];
+        if center.ocean {
+            return;
+        }
+
+        center.river = true;
+        center.river_size = center.river_size.max(river_width);
+        center.water = true;
+    }
+
     fn lookup_edge_from_corner(&self, q: usize, s: usize) -> Option<usize> {
         self.edge_by_corners.get(&sorted_pair(q, s)).copied()
     }
@@ -1202,12 +1281,13 @@ impl PolyMap {
     }
 }
 
-const BIOME_DISPLAY_ORDER: [(&str, &str); 18] = [
+const BIOME_DISPLAY_ORDER: [(&str, &str); 19] = [
     ("DEEP_OCEAN", "Deep Ocean"),
     ("SHALLOW_OCEAN", "Shallow Ocean"),
     ("BEACH", "Beach"),
     ("LAKE", "Lake"),
     ("MARSH", "Marsh"),
+    ("RIVER", "River"),
     ("SNOW", "Snow"),
     ("TUNDRA", "Tundra"),
     ("HIGHLANDS", "Highlands"),
@@ -1245,6 +1325,11 @@ pub(super) fn generate_square_points(point_count: usize) -> Vec<Vec2> {
 
 fn build_regions(point_count: usize) -> Vec<Vec<Vec2>> {
     build_square_regions(point_count)
+}
+
+fn river_tile_width(river_strength: i32) -> i32 {
+    // River strength can stack at confluences; tile width grows slowly so rivers stay readable.
+    ((river_strength as f32).sqrt().ceil() as i32).clamp(1, 3)
 }
 
 fn build_square_regions(point_count: usize) -> Vec<Vec<Vec2>> {

@@ -25,6 +25,8 @@ fn map_fingerprint(map: &PolyMap) -> u64 {
         center.ocean.hash(&mut hasher);
         center.shallow_ocean.hash(&mut hasher);
         center.ocean_distance.hash(&mut hasher);
+        center.river.hash(&mut hasher);
+        center.river_size.hash(&mut hasher);
         center.coast.hash(&mut hasher);
         center.border.hash(&mut hasher);
         center.biome.hash(&mut hasher);
@@ -118,7 +120,7 @@ fn passable_land_and_shallow_components(map: &PolyMap) -> Vec<Vec<usize>> {
 
 fn is_land_or_shallow_ocean(map: &PolyMap, center_id: usize) -> bool {
     let center = &map.centers[center_id];
-    !center.water || center.biome == "SHALLOW_OCEAN"
+    !center.water || matches!(center.biome, "SHALLOW_OCEAN" | "RIVER")
 }
 
 fn land_count_reachable_without(map: &PolyMap, blocked: Option<usize>) -> usize {
@@ -326,7 +328,7 @@ fn default_seed_matches_swf_demo() {
 fn default_scene_configuration_is_trimmed() {
     assert_eq!(DEFAULT_ISLAND_TYPE, IslandType::Perlin);
     assert_eq!(DEFAULT_POINT_TYPE, PointType::Square);
-    assert_eq!(DEFAULT_POINT_COUNT, 4000);
+    assert_eq!(DEFAULT_POINT_COUNT, 16000);
     assert_eq!(DEFAULT_SHALLOW_SEA_SIZE, ShallowSeaSize::Wide);
     assert_eq!(DEFAULT_BAY_ROUNDING, BayRounding::Light);
     assert_eq!(DEFAULT_VIEW_MODE, ViewMode::Biome);
@@ -467,10 +469,10 @@ fn wide_map_area_uses_neutral_backdrop_color() {
 
 #[test]
 fn square_point_selector_uses_floor_sqrt_grid_counts() {
-    assert_eq!(generate_square_points(4000).len(), 63 * 63);
-    assert_eq!(generate_square_points(8000).len(), 89 * 89);
     assert_eq!(generate_square_points(16000).len(), 126 * 126);
     assert_eq!(generate_square_points(32000).len(), 178 * 178);
+    assert_eq!(generate_square_points(64000).len(), 252 * 252);
+    assert_eq!(generate_square_points(128000).len(), 357 * 357);
 }
 
 #[test]
@@ -527,7 +529,7 @@ fn demo_control_labels_match_reference() {
     assert_eq!(shallow_labels, ["Narrow", "Normal", "Wide"]);
     assert_eq!(bay_rounding_labels, ["Light", "Normal", "Strong"]);
     assert_eq!(view_labels, ["Biomes", "2D slopes"]);
-    assert_eq!(&POINT_COUNTS[..], &[4000, 8000, 16000, 32000]);
+    assert_eq!(&POINT_COUNTS[..], &[16000, 32000, 64000, 128000]);
 }
 
 #[test]
@@ -558,7 +560,7 @@ fn removed_controls_are_not_accepted_from_debug_env() {
 
 #[test]
 fn removed_point_counts_are_not_available() {
-    for removed_count in [500, 1000, 2000] {
+    for removed_count in [500, 1000, 2000, 4000, 8000] {
         assert!(!POINT_COUNTS.contains(&removed_count));
     }
 }
@@ -686,6 +688,85 @@ fn simplex_square_generation_builds_valid_island() {
     assert!(map.centers.iter().any(|center| !center.water));
     assert!(map.centers.iter().any(|center| center.coast));
     assert!(map.edges.iter().any(|edge| edge.river > 0));
+}
+
+#[test]
+fn generated_edge_rivers_become_base_river_biome_cells() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let river_cells: Vec<_> = map
+        .centers
+        .iter()
+        .filter(|center| center.biome == "RIVER")
+        .collect();
+
+    assert!(
+        map.edges.iter().any(|edge| edge.river > 0),
+        "fixture seed should still generate edge-river scaffolding"
+    );
+    assert!(!river_cells.is_empty());
+    assert!(river_cells.iter().all(|center| center.river));
+    assert!(river_cells.iter().all(|center| center.water));
+    assert!(river_cells.iter().all(|center| !center.ocean));
+}
+
+#[test]
+fn generated_river_cell_widths_are_capped_to_three_tiles() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+
+    assert!(map.centers.iter().any(|center| center.river));
+    assert!(map.centers.iter().all(|center| {
+        if center.river {
+            (1..=3).contains(&center.river_size)
+        } else {
+            center.river_size == 0
+        }
+    }));
+}
+
+#[test]
+fn one_strength_river_edges_stamp_one_adjacent_river_cell() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let single_strength_edges: Vec<_> = map
+        .edges
+        .iter()
+        .filter(|edge| edge.river == 1)
+        .filter_map(|edge| Some((edge.d0?, edge.d1?)))
+        .filter(|&(d0, d1)| !map.centers[d0].ocean && !map.centers[d1].ocean)
+        .filter(|&(d0, d1)| {
+            [d0, d1].into_iter().all(|center_id| {
+                map.centers[center_id]
+                    .borders
+                    .iter()
+                    .filter(|&&edge_id| map.edges[edge_id].river > 0)
+                    .count()
+                    == 1
+            })
+        })
+        .collect();
+
+    assert!(!single_strength_edges.is_empty());
+    assert!(single_strength_edges.into_iter().all(|(d0, d1)| {
+        [map.centers[d0].river, map.centers[d1].river]
+            .into_iter()
+            .filter(|&is_river| is_river)
+            .count()
+            == 1
+    }));
 }
 
 #[test]
@@ -865,7 +946,7 @@ fn biome_categories_match_water_state() {
         if center.ocean {
             assert!(matches!(center.biome, "SHALLOW_OCEAN" | "DEEP_OCEAN"));
         } else if center.water {
-            assert!(matches!(center.biome, "MARSH" | "LAKE"));
+            assert!(matches!(center.biome, "MARSH" | "LAKE" | "RIVER"));
         } else if center.coast {
             assert_eq!(center.biome, "BEACH");
         } else {
@@ -878,6 +959,28 @@ fn biome_categories_match_water_state() {
 }
 
 #[test]
+fn rivers_are_listed_as_base_biomes() {
+    let map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    let river_count = map
+        .centers
+        .iter()
+        .filter(|center| center.biome == "RIVER")
+        .count();
+    let river_entry = map
+        .biome_counts()
+        .into_iter()
+        .find(|entry| entry.name == "River");
+
+    assert!(river_count > 0);
+    assert_eq!(river_entry.map(|entry| entry.count), Some(river_count));
+}
+
+#[test]
 fn ice_is_not_a_generated_biome() {
     let high_water = Center {
         index: 0,
@@ -886,6 +989,8 @@ fn ice_is_not_a_generated_biome() {
         ocean: false,
         shallow_ocean: false,
         ocean_distance: -1,
+        river: false,
+        river_size: 0,
         coast: false,
         border: false,
         biome: "",
@@ -980,6 +1085,8 @@ fn biome_probe_center(elevation: f32, moisture: f32) -> Center {
         ocean: false,
         shallow_ocean: false,
         ocean_distance: -1,
+        river: false,
+        river_size: 0,
         coast: false,
         border: false,
         biome: "",
