@@ -42,7 +42,7 @@ Current controls:
 - Shallow sea size: narrow, normal, wide.
 - Bay rounding: light, normal, strong.
 - View mode: biome and slope-oriented debug rendering.
-- Biome list with color swatches and cell counts.
+- Right-panel biome list with color swatches and cell counts.
 - Pan and zoom for map inspection.
 
 Current generation concepts:
@@ -54,6 +54,7 @@ Current generation concepts:
 - Elevation and moisture assignment.
 - River/drainage handling.
 - Biome classification, including separate shallow and deep ocean biomes.
+- Current land biome vocabulary includes snow, tundra, highlands, peak, taiga, shrubland, rocky plains, forest, meadow, grassland, desert, rainforest, and woodland.
 - Noisy edge paths for more organic region boundaries.
 - Color interpolation and biome palettes for rendering.
 

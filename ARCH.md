@@ -29,7 +29,7 @@ src/
     mapgen/model.rs    - Map data structs: centers, corners, edges, noisy edges, PolyMap
     mapgen/noise.rs    - Island profiles and cached procedural noise sampling
     mapgen/random.rs   - Macroquad owned RNG wrappers for deterministic generation
-    mapgen/render.rs   - Mapgen drawing, sidebar UI, biome list, map edge/polygon rendering
+    mapgen/render.rs   - Mapgen drawing, left/right panel UI, biome list, map edge/polygon rendering
     mapgen/seed.rs     - Seed parsing, random seed text, seed input helpers
     mapgen/tests.rs    - Mapgen unit tests
 ```
@@ -57,7 +57,7 @@ Macroquad window setup
 |-------|--------|------------------|
 | MainMenu | `src/scenes/menu.rs` | Draws a centered Macroquad UI window branded as TicTacToe with Play, Mapgen, Battle, Settings, and Quit buttons. |
 | Play | `src/scenes/play.rs` | Placeholder label; Escape returns to MainMenu. |
-| Mapgen | `src/scenes/mapgen.rs` | Interactive procedural island/map viewer with sidebar controls, panning, zooming, regeneration, deterministic seeds, and unit-tested helpers. |
+| Mapgen | `src/scenes/mapgen.rs` | Interactive procedural island/map viewer with left-panel controls, right-panel biome list, panning, zooming, regeneration, deterministic seeds, and unit-tested helpers. |
 | Battle | `src/scenes/battle.rs` | Placeholder label; Escape returns to MainMenu. |
 | Settings | `src/scenes/settings.rs` | Placeholder label; Escape returns to MainMenu. |
 
@@ -72,7 +72,7 @@ Macroquad window setup
 - `PointType` currently supports square point layout as an always-on internal setting.
 - `ViewMode` supports biome and slope-style debug views.
 - Seed parsing lives in `mapgen/seed.rs`; pan/zoom math remains in the scene shell; biome classification lives in `mapgen/biome.rs`; graph generation and ocean-depth assignment live in `mapgen/generate.rs`.
-- Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps. In wide windows, the square map is centered inside a neutral gray map area instead of stretching or leaving unused white space.
+- Rendering and Macroquad UI widgets live in `mapgen/render.rs`; rendering reads map state and does not build maps. Mapgen uses a left panel for controls, a right panel for the biome count list, and centers the square map inside the neutral gray area between them.
 - Regeneration runs on a background worker thread and sends the finished `PolyMap` back to the scene through a channel. The previous map remains visible while a new map is building.
 - `noise` supplies Perlin/fBm and OpenSimplex noise; small local wrappers normalize output into the mapgen-friendly `0.0..=1.0` range.
 - `IslandProfile` caches reusable noise generators so map sampling does not recreate noise objects per corner.

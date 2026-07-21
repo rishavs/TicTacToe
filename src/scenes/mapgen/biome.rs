@@ -13,8 +13,6 @@ pub(super) fn get_biome(center: &Center) -> &'static str {
     } else if center.water {
         if center.elevation < 0.1 {
             "MARSH"
-        } else if center.elevation > 0.8 {
-            "ICE"
         } else {
             "LAKE"
         }
@@ -26,9 +24,9 @@ pub(super) fn get_biome(center: &Center) -> &'static str {
         } else if center.moisture > 0.33 {
             "TUNDRA"
         } else if center.moisture > 0.16 {
-            "BARE"
+            "HIGHLANDS"
         } else {
-            "SCORCHED"
+            "PEAK"
         }
     } else if center.elevation > 0.6 {
         if center.moisture > 0.66 {
@@ -36,26 +34,26 @@ pub(super) fn get_biome(center: &Center) -> &'static str {
         } else if center.moisture > 0.33 {
             "SHRUBLAND"
         } else {
-            "TEMPERATE_DESERT"
+            "ROCKY_PLAINS"
         }
     } else if center.elevation > 0.3 {
-        if center.moisture > 0.83 {
-            "TEMPERATE_RAIN_FOREST"
+        if center.elevation > 0.55 && center.moisture > 0.50 {
+            "MEADOW"
         } else if center.moisture > 0.50 {
-            "TEMPERATE_DECIDUOUS_FOREST"
+            "FOREST"
         } else if center.moisture > 0.16 {
             "GRASSLAND"
         } else {
-            "TEMPERATE_DESERT"
+            "ROCKY_PLAINS"
         }
     } else if center.moisture > 0.66 {
-        "TROPICAL_RAIN_FOREST"
+        "RAINFOREST"
     } else if center.moisture > 0.33 {
-        "TROPICAL_SEASONAL_FOREST"
+        "WOODLAND"
     } else if center.moisture > 0.16 {
         "GRASSLAND"
     } else {
-        "SUBTROPICAL_DESERT"
+        "DESERT"
     }
 }
 
@@ -68,21 +66,20 @@ pub(super) fn biome_color(biome: &str) -> u32 {
         "LAKE" => LAKE_WATER_COLOR,
         "RIVER" => LAKE_WATER_COLOR,
         "MARSH" => 0x2f6666,
-        "ICE" => 0x99ffff,
         "BEACH" => 0xa09077,
-        "SNOW" => 0xffffff,
+        "SNOW" => 0xe5ffff,
         "TUNDRA" => 0xbbbbaa,
-        "BARE" => 0x888888,
-        "SCORCHED" => 0x555555,
+        "HIGHLANDS" => 0x888888,
+        "PEAK" => 0xffffff,
         "TAIGA" => 0x99aa77,
         "SHRUBLAND" => 0x889977,
-        "TEMPERATE_DESERT" => 0xc9d29b,
-        "TEMPERATE_RAIN_FOREST" => 0x448855,
-        "TEMPERATE_DECIDUOUS_FOREST" => 0x679459,
+        "ROCKY_PLAINS" => 0xc9d29b,
+        "FOREST" => 0x679459,
+        "MEADOW" => 0xa8bf70,
         "GRASSLAND" => 0x88aa55,
-        "SUBTROPICAL_DESERT" => 0xd2b98b,
-        "TROPICAL_RAIN_FOREST" => 0x337755,
-        "TROPICAL_SEASONAL_FOREST" => 0x559944,
+        "DESERT" => 0xd2b98b,
+        "RAINFOREST" => 0x337755,
+        "WOODLAND" => 0x559944,
         _ => 0x000000,
     }
 }

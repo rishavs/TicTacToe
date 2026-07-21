@@ -238,26 +238,28 @@ fn island_button_x_positions() -> &'static [f32] {
 }
 
 struct MapgenLayout {
+    left_panel_rect: Rect,
     map_area_rect: Rect,
     map_rect: Rect,
-    sidebar_rect: Rect,
+    right_panel_rect: Rect,
 }
 
 fn mapgen_layout(width: f32, height: f32) -> MapgenLayout {
-    let sidebar_w = (width * 0.25).clamp(190.0, 260.0);
-    let map_w = (width - sidebar_w).max(1.0);
+    let panel_w = (width * 0.2).clamp(248.0, 260.0);
+    let map_w = (width - panel_w * 2.0).max(1.0);
     let map_size = map_w.min(height);
-    let map_x = ((map_w - map_size) * 0.5).max(0.0);
+    let map_x = panel_w + ((map_w - map_size) * 0.5).max(0.0);
     let map_y = ((height - map_size) * 0.5).max(0.0);
     MapgenLayout {
-        map_area_rect: Rect::new(0.0, 0.0, map_w, height),
+        left_panel_rect: Rect::new(0.0, 0.0, panel_w, height),
+        map_area_rect: Rect::new(panel_w, 0.0, map_w, height),
         map_rect: Rect::new(map_x, map_y, map_size, map_size),
-        sidebar_rect: Rect::new(map_w, 0.0, sidebar_w, height),
+        right_panel_rect: Rect::new(panel_w + map_w, 0.0, panel_w, height),
     }
 }
 
-fn seed_field_rect(sidebar: Rect) -> Rect {
-    Rect::new(sidebar.x + 79.0, 28.0, 88.0, 24.0)
+fn seed_field_rect(panel: Rect) -> Rect {
+    Rect::new(panel.x + 79.0, 28.0, 88.0, 24.0)
 }
 
 fn map_source_rect(pan: Vec2, zoom: f32) -> Rect {
@@ -367,7 +369,7 @@ impl MapgenScene {
     fn update(&mut self) {
         self.poll_generation();
         let layout = mapgen_layout(screen_width(), screen_height());
-        self.handle_seed_input(layout.sidebar_rect);
+        self.handle_seed_input(layout.left_panel_rect);
         if !self.seed_input_active {
             self.handle_viewport_keys();
         }
@@ -376,8 +378,8 @@ impl MapgenScene {
         render::draw(self, layout, source_rect);
     }
 
-    fn handle_seed_input(&mut self, sidebar: Rect) {
-        let field = seed_field_rect(sidebar);
+    fn handle_seed_input(&mut self, panel: Rect) {
+        let field = seed_field_rect(panel);
         let (mouse_x, mouse_y) = mouse_position();
         let mouse = vec2(mouse_x, mouse_y);
 

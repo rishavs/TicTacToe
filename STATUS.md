@@ -56,10 +56,10 @@
 - [x] Shallow sea size options: narrow, normal, wide, with wide as the default
 - [x] Bay rounding options: light, normal, strong, with light as the default
 - [x] View modes include biome and slopes
-- [x] Sidebar shows a biome color/count list instead of histograms
+- [x] Left mapgen panel holds controls while the right panel shows the biome color/count list
 - [x] Pan and zoom support
 - [x] Perlin island shaping leaves about five deep-ocean cells at the generated map edge
-- [x] Wide mapgen windows center the square map inside a neutral gray map area
+- [x] Wide mapgen windows center the square map inside a neutral gray area between side panels
 - [x] Deterministic generation tests
 - [x] Custom hand-rolled noise internals replaced with the `noise` crate
 - [x] Island profile caches reusable noise generators for much faster generation

@@ -393,12 +393,12 @@ fn seed_input_replaces_existing_seed_on_first_typed_character() {
 
 #[test]
 fn seed_input_hitbox_matches_demo_panel_position() {
-    let sidebar = Rect::new(768.0, 0.0, 256.0, 768.0);
-    let field = seed_field_rect(sidebar);
+    let left_panel = Rect::new(0.0, 0.0, 256.0, 768.0);
+    let field = seed_field_rect(left_panel);
 
-    assert!(field.contains(vec2(848.0, 29.0)));
-    assert!(field.contains(vec2(912.0, 51.0)));
-    assert!(!field.contains(vec2(846.0, 29.0)));
+    assert!(field.contains(vec2(80.0, 29.0)));
+    assert!(field.contains(vec2(166.0, 51.0)));
+    assert!(!field.contains(vec2(78.0, 29.0)));
 }
 
 #[test]
@@ -433,11 +433,33 @@ fn random_seed_keeps_visible_seed_value() {
 fn wide_mapgen_layout_centers_square_map_in_map_area() {
     let layout = mapgen_layout(1536.0, 768.0);
 
-    assert_eq!(layout.sidebar_rect.x, 1276.0);
-    assert_eq!(layout.map_rect.x, 254.0);
+    assert_eq!(layout.left_panel_rect, Rect::new(0.0, 0.0, 260.0, 768.0));
+    assert_eq!(layout.map_area_rect, Rect::new(260.0, 0.0, 1016.0, 768.0));
+    assert_eq!(
+        layout.right_panel_rect,
+        Rect::new(1276.0, 0.0, 260.0, 768.0)
+    );
+    assert_eq!(layout.map_rect.x, 384.0);
     assert_eq!(layout.map_rect.y, 0.0);
     assert_eq!(layout.map_rect.w, 768.0);
     assert_eq!(layout.map_rect.h, 768.0);
+}
+
+#[test]
+fn biome_list_origin_uses_right_panel_top() {
+    let right_panel = Rect::new(1276.0, 0.0, 260.0, 768.0);
+
+    assert_eq!(render::biome_list_origin(right_panel), vec2(1294.0, 32.0));
+}
+
+#[test]
+fn view_group_sits_below_bay_rounding_group() {
+    let left_panel = Rect::new(0.0, 0.0, 260.0, 768.0);
+
+    assert_eq!(
+        render::view_group_rect(left_panel),
+        Rect::new(16.0, 328.0, 232.0, 62.0)
+    );
 }
 
 #[test]
@@ -845,15 +867,129 @@ fn biome_categories_match_water_state() {
         if center.ocean {
             assert!(matches!(center.biome, "SHALLOW_OCEAN" | "DEEP_OCEAN"));
         } else if center.water {
-            assert!(matches!(center.biome, "MARSH" | "ICE" | "LAKE"));
+            assert!(matches!(center.biome, "MARSH" | "LAKE"));
         } else if center.coast {
             assert_eq!(center.biome, "BEACH");
         } else {
             assert!(!matches!(
                 center.biome,
-                "OCEAN" | "SHALLOW_OCEAN" | "DEEP_OCEAN" | "MARSH" | "ICE" | "LAKE"
+                "OCEAN" | "SHALLOW_OCEAN" | "DEEP_OCEAN" | "MARSH" | "LAKE"
             ));
         }
+    }
+}
+
+#[test]
+fn ice_is_not_a_generated_biome() {
+    let high_water = Center {
+        index: 0,
+        point: vec2(0.0, 0.0),
+        water: true,
+        ocean: false,
+        shallow_ocean: false,
+        ocean_distance: -1,
+        coast: false,
+        border: false,
+        biome: "",
+        elevation: 0.95,
+        moisture: 0.5,
+        neighbors: Vec::new(),
+        borders: Vec::new(),
+        corners: Vec::new(),
+    };
+
+    assert_eq!(biome::get_biome(&high_water), "LAKE");
+    assert_eq!(biome::biome_color("ICE"), 0x000000);
+}
+
+#[test]
+fn renamed_land_biomes_match_ui_names_and_colors() {
+    let mut highland = biome_probe_center(0.85, 0.2);
+    let mut peak = biome_probe_center(0.85, 0.1);
+    let mut rocky_plains = biome_probe_center(0.5, 0.1);
+    let mut desert = biome_probe_center(0.1, 0.1);
+    let mut wet_forest = biome_probe_center(0.45, 0.9);
+    let mut forest = biome_probe_center(0.45, 0.6);
+    let mut meadow = biome_probe_center(0.56, 0.6);
+    let mut rainforest = biome_probe_center(0.1, 0.8);
+    let mut woodland = biome_probe_center(0.1, 0.5);
+
+    highland.biome = biome::get_biome(&highland);
+    peak.biome = biome::get_biome(&peak);
+    rocky_plains.biome = biome::get_biome(&rocky_plains);
+    desert.biome = biome::get_biome(&desert);
+    wet_forest.biome = biome::get_biome(&wet_forest);
+    forest.biome = biome::get_biome(&forest);
+    meadow.biome = biome::get_biome(&meadow);
+    rainforest.biome = biome::get_biome(&rainforest);
+    woodland.biome = biome::get_biome(&woodland);
+
+    assert_eq!(highland.biome, "HIGHLANDS");
+    assert_eq!(peak.biome, "PEAK");
+    assert_eq!(rocky_plains.biome, "ROCKY_PLAINS");
+    assert_eq!(desert.biome, "DESERT");
+    assert_eq!(wet_forest.biome, "FOREST");
+    assert_eq!(forest.biome, "FOREST");
+    assert_eq!(meadow.biome, "MEADOW");
+    assert_eq!(rainforest.biome, "RAINFOREST");
+    assert_eq!(woodland.biome, "WOODLAND");
+    assert_eq!(biome::biome_color("SNOW"), 0xe5ffff);
+    assert_eq!(biome::biome_color("PEAK"), 0xffffff);
+    assert_eq!(biome::biome_color("BARE"), 0x000000);
+    assert_eq!(biome::biome_color("SCORCHED"), 0x000000);
+    assert_eq!(biome::biome_color("TEMPERATE_DESERT"), 0x000000);
+    assert_eq!(biome::biome_color("SUBTROPICAL_DESERT"), 0x000000);
+    assert_eq!(biome::biome_color("TEMPERATE_RAIN_FOREST"), 0x000000);
+    assert_eq!(biome::biome_color("TEMPERATE_DECIDUOUS_FOREST"), 0x000000);
+    assert_eq!(biome::biome_color("TROPICAL_RAIN_FOREST"), 0x000000);
+    assert_eq!(biome::biome_color("TROPICAL_SEASONAL_FOREST"), 0x000000);
+
+    let mut map = generate_map(
+        DEFAULT_SEED_TEXT,
+        IslandType::Perlin,
+        PointType::Square,
+        4000,
+    );
+    for center in &mut map.centers {
+        center.biome = "DEEP_OCEAN";
+    }
+    map.centers[0].biome = highland.biome;
+    map.centers[1].biome = peak.biome;
+    map.centers[2].biome = rocky_plains.biome;
+    map.centers[3].biome = desert.biome;
+    map.centers[4].biome = forest.biome;
+    map.centers[5].biome = meadow.biome;
+    map.centers[6].biome = rainforest.biome;
+    map.centers[7].biome = woodland.biome;
+
+    let counts = map.biome_counts();
+    let visible_names: Vec<_> = counts.iter().map(|entry| entry.name).collect();
+    assert!(visible_names.contains(&"Highlands"));
+    assert!(visible_names.contains(&"Peak"));
+    assert!(visible_names.contains(&"Rocky Plains"));
+    assert!(visible_names.contains(&"Desert"));
+    assert!(visible_names.contains(&"Forest"));
+    assert!(visible_names.contains(&"Meadow"));
+    assert!(visible_names.contains(&"Rainforest"));
+    assert!(visible_names.contains(&"Woodland"));
+}
+
+fn biome_probe_center(elevation: f32, moisture: f32) -> Center {
+    Center {
+        index: 0,
+        point: vec2(0.0, 0.0),
+        water: false,
+        ocean: false,
+        shallow_ocean: false,
+        ocean_distance: -1,
+        coast: false,
+        border: false,
+        biome: "",
+        elevation,
+        moisture,
+        neighbors: Vec::new(),
+        borders: Vec::new(),
+        corners: Vec::new(),
     }
 }
 

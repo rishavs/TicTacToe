@@ -1202,26 +1202,25 @@ impl PolyMap {
     }
 }
 
-const BIOME_DISPLAY_ORDER: [(&str, &str); 19] = [
+const BIOME_DISPLAY_ORDER: [(&str, &str); 18] = [
     ("DEEP_OCEAN", "Deep Ocean"),
     ("SHALLOW_OCEAN", "Shallow Ocean"),
     ("BEACH", "Beach"),
     ("LAKE", "Lake"),
-    ("ICE", "Ice"),
     ("MARSH", "Marsh"),
     ("SNOW", "Snow"),
     ("TUNDRA", "Tundra"),
-    ("BARE", "Bare"),
-    ("SCORCHED", "Scorched"),
+    ("HIGHLANDS", "Highlands"),
+    ("PEAK", "Peak"),
     ("TAIGA", "Taiga"),
     ("SHRUBLAND", "Shrubland"),
-    ("TEMPERATE_DESERT", "Temperate Desert"),
-    ("TEMPERATE_RAIN_FOREST", "Temperate Rain Forest"),
-    ("TEMPERATE_DECIDUOUS_FOREST", "Temperate Deciduous Forest"),
+    ("ROCKY_PLAINS", "Rocky Plains"),
+    ("FOREST", "Forest"),
+    ("MEADOW", "Meadow"),
     ("GRASSLAND", "Grassland"),
-    ("SUBTROPICAL_DESERT", "Subtropical Desert"),
-    ("TROPICAL_RAIN_FOREST", "Tropical Rain Forest"),
-    ("TROPICAL_SEASONAL_FOREST", "Tropical Seasonal Forest"),
+    ("DESERT", "Desert"),
+    ("RAINFOREST", "Rainforest"),
+    ("WOODLAND", "Woodland"),
 ];
 
 fn select_points(point_type: PointType, point_count: usize, _seed: u32) -> Vec<Vec2> {

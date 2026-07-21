@@ -18,16 +18,22 @@ pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: R
         source_rect,
     );
     draw_rectangle(
-        layout.sidebar_rect.x,
-        layout.sidebar_rect.y,
-        layout.sidebar_rect.w,
-        layout.sidebar_rect.h,
+        layout.left_panel_rect.x,
+        layout.left_panel_rect.y,
+        layout.left_panel_rect.w,
+        layout.left_panel_rect.h,
         SIDEBAR_COLOR,
     );
-    draw_biome_list(scene.map.as_ref(), layout.sidebar_rect);
-    draw_controls(scene, layout.sidebar_rect);
-    draw_seed_field(scene, layout.sidebar_rect);
-    draw_footer(scene, layout.sidebar_rect);
+    draw_rectangle(
+        layout.right_panel_rect.x,
+        layout.right_panel_rect.y,
+        layout.right_panel_rect.w,
+        layout.right_panel_rect.h,
+        SIDEBAR_COLOR,
+    );
+    draw_controls(scene, layout.left_panel_rect);
+    draw_seed_field(scene, layout.left_panel_rect);
+    draw_biome_list(scene.map.as_ref(), layout.right_panel_rect);
 }
 
 pub(super) fn map_area_background_color() -> u32 {
@@ -103,7 +109,7 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
                 2.0,
                 color_from_u32(0x33335a),
             );
-        } else if a.water != b.water && a.biome != "ICE" && b.biome != "ICE" {
+        } else if a.water != b.water {
             draw_noisy_edge_path(
                 path0,
                 path1,
@@ -125,9 +131,10 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
     }
 }
 
-fn draw_biome_list(map: Option<&PolyMap>, sidebar: Rect) {
-    let x = sidebar.x + 18.0;
-    let mut y = 390.0;
+fn draw_biome_list(map: Option<&PolyMap>, panel: Rect) {
+    let origin = biome_list_origin(panel);
+    let x = origin.x;
+    let mut y = origin.y;
 
     draw_text("Biomes:", x, y, 18.0, BLACK);
     let Some(map) = map else {
@@ -139,8 +146,12 @@ fn draw_biome_list(map: Option<&PolyMap>, sidebar: Rect) {
     }
 }
 
-fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
-    let x = sidebar.x + 16.0;
+pub(super) fn biome_list_origin(panel: Rect) -> Vec2 {
+    vec2(panel.x + 18.0, panel.y + 32.0)
+}
+
+fn draw_controls(scene: &mut MapgenScene, panel: Rect) {
+    let x = panel.x + 16.0;
     let mut needs_regenerate = false;
 
     widgets::Window::new(
@@ -227,8 +238,8 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
 
     widgets::Window::new(
         hash!("mapgen_view"),
-        vec2(x + 12.0, 666.0),
-        vec2(200.0, 62.0),
+        view_group_rect(panel).point(),
+        view_group_rect(panel).size(),
     )
     .titlebar(false)
     .movable(false)
@@ -249,8 +260,12 @@ fn draw_controls(scene: &mut MapgenScene, sidebar: Rect) {
     }
 }
 
-fn draw_seed_field(scene: &MapgenScene, sidebar: Rect) {
-    let field = seed_field_rect(sidebar);
+pub(super) fn view_group_rect(panel: Rect) -> Rect {
+    Rect::new(panel.x + 16.0, panel.y + 328.0, 232.0, 62.0)
+}
+
+fn draw_seed_field(scene: &MapgenScene, panel: Rect) {
+    let field = seed_field_rect(panel);
     let border = if scene.seed_input_active { BLACK } else { GRAY };
     let value = if scene.seed_input_active {
         scene.seed_edit_text.as_str()
@@ -272,17 +287,6 @@ fn draw_seed_field(scene: &MapgenScene, sidebar: Rect) {
     );
     draw_rectangle_lines(field.x, field.y, field.w, field.h, 1.0, border);
     draw_text(&text, field.x + 4.0, field.y + 17.0, 18.0, BLACK);
-}
-
-fn draw_footer(scene: &MapgenScene, sidebar: Rect) {
-    draw_text(
-        format!("Zoom {:.1}x", scene.zoom),
-        sidebar.x + 16.0,
-        724.0,
-        16.0,
-        BLACK,
-    );
-    draw_text(&scene.status, sidebar.x + 16.0, 744.0, 16.0, BLACK);
 }
 
 fn draw_biome_count_row(x: f32, y: f32, number: usize, entry: &BiomeCount) {
