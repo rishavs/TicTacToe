@@ -18,7 +18,7 @@
 src/
   main.rs              - Macroquad config, maximized startup, main loop, scene dispatch, screenshot capture
   scenes/
-    mod.rs             - Scene enum
+    mod.rs             - Scene enum and shared placeholder-scene helper
     menu.rs            - Main menu and scene navigation buttons
     play.rs            - Play placeholder scene
     battle.rs          - Battle placeholder scene
@@ -65,7 +65,7 @@ Macroquad window setup
 
 `src/scenes/mapgen.rs` contains scene state, input, and background generation coordination. Child modules under `src/scenes/mapgen/` hold the deterministic model, generation pipeline, rendering, biome/color math, noise, RNG, seed helpers, and tests.
 
-- `MapgenScene` stores selected seed, island type, point type, point count, shallow sea size, bay rounding strength, view mode, current generated map, pending generation job, pan, zoom, and status.
+- `MapgenScene` stores selected seed, island type, point type, point count, shallow sea size, bay rounding strength, view mode, current generated map, pending generation job, pan, and zoom.
 - `PolyMap` stores generated centers, corners, edges, noisy edges, and biome count data in `mapgen/model.rs`.
 - `Center`, `Corner`, `Edge`, and `NoisyEdge` model the graph used by the map renderer. Centers also store ocean depth classification state, including `shallow_ocean` and `ocean_distance`.
 - `IslandType` supports perlin and simplex shaping.

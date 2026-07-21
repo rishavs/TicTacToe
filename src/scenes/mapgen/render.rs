@@ -3,6 +3,8 @@ use super::*;
 use macroquad::ui::widgets;
 use macroquad::ui::{hash, root_ui};
 
+pub(super) const COAST_OUTLINE_COLOR: u32 = 0x33335a;
+
 pub(super) fn draw(scene: &mut MapgenScene, layout: MapgenLayout, source_rect: Rect) {
     draw_rectangle(
         layout.map_area_rect.x,
@@ -100,35 +102,34 @@ fn draw_edges(map: &PolyMap, map_rect: Rect, source_rect: Rect) {
             continue;
         };
 
-        if a.ocean != b.ocean {
+        if let Some((width, color)) = edge_stroke_style(a, b, edge.river) {
             draw_noisy_edge_path(
                 path0,
                 path1,
                 map_rect,
                 source_rect,
-                2.0,
-                color_from_u32(0x33335a),
-            );
-        } else if a.water != b.water {
-            draw_noisy_edge_path(
-                path0,
-                path1,
-                map_rect,
-                source_rect,
-                1.0,
-                color_from_u32(LAKE_WATER_COLOR),
-            );
-        } else if !a.water && !b.water && edge.river > 0 {
-            draw_noisy_edge_path(
-                path0,
-                path1,
-                map_rect,
-                source_rect,
-                (edge.river as f32).sqrt(),
-                color_from_u32(LAKE_WATER_COLOR),
+                width,
+                color_from_u32(color),
             );
         }
     }
+}
+
+pub(super) fn edge_stroke_style(a: &Center, b: &Center, river: i32) -> Option<(f32, u32)> {
+    // Coasts and lake shores use the same dark line so enclosed water reads as a real boundary.
+    if a.ocean != b.ocean || is_lake_shore(a, b) {
+        Some((2.0, COAST_OUTLINE_COLOR))
+    } else if a.water != b.water {
+        Some((1.0, LAKE_WATER_COLOR))
+    } else if !a.water && !b.water && river > 0 {
+        Some(((river as f32).sqrt(), LAKE_WATER_COLOR))
+    } else {
+        None
+    }
+}
+
+fn is_lake_shore(a: &Center, b: &Center) -> bool {
+    a.water != b.water && (a.biome == "LAKE" || b.biome == "LAKE")
 }
 
 fn draw_biome_list(map: Option<&PolyMap>, panel: Rect) {
@@ -236,24 +237,20 @@ fn draw_controls(scene: &mut MapgenScene, panel: Rect) {
         }
     });
 
-    widgets::Window::new(
-        hash!("mapgen_view"),
-        view_group_rect(panel).point(),
-        view_group_rect(panel).size(),
-    )
-    .titlebar(false)
-    .movable(false)
-    .ui(&mut root_ui(), |ui| {
-        ui.label(Some(vec2(82.0, 2.0)), "View:");
-        for (index, mode) in ViewMode::ALL.into_iter().enumerate() {
-            let col = index as f32;
-            let label = selected_label(mode.label(), mode == scene.view_mode);
-            if ui.button(Some(vec2(col * 95.0, 28.0)), label.as_str()) {
-                scene.view_mode = mode;
-                scene.status = format!("View: {}", mode.label());
+    let view_rect = view_group_rect(panel);
+    widgets::Window::new(hash!("mapgen_view"), view_rect.point(), view_rect.size())
+        .titlebar(false)
+        .movable(false)
+        .ui(&mut root_ui(), |ui| {
+            ui.label(Some(vec2(82.0, 2.0)), "View:");
+            for (index, mode) in ViewMode::ALL.into_iter().enumerate() {
+                let col = index as f32;
+                let label = selected_label(mode.label(), mode == scene.view_mode);
+                if ui.button(Some(vec2(col * 95.0, 28.0)), label.as_str()) {
+                    scene.view_mode = mode;
+                }
             }
-        }
-    });
+        });
 
     if needs_regenerate {
         scene.regenerate();
@@ -290,11 +287,11 @@ fn draw_seed_field(scene: &MapgenScene, panel: Rect) {
 }
 
 fn draw_biome_count_row(x: f32, y: f32, number: usize, entry: &BiomeCount) {
-    draw_text(&format!("{}.", number), x, y + 12.0, 14.0, BLACK);
+    draw_text(format!("{}.", number), x, y + 12.0, 14.0, BLACK);
     draw_rectangle(x + 22.0, y, 12.0, 12.0, color_from_u32(entry.color));
     draw_rectangle_lines(x + 22.0, y, 12.0, 12.0, 1.0, BLACK);
     draw_text(
-        &format!("{} - {}", entry.name, entry.count),
+        format!("{} - {}", entry.name, entry.count),
         x + 40.0,
         y + 12.0,
         14.0,

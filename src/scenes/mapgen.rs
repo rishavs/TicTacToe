@@ -299,7 +299,6 @@ struct MapgenScene {
     generation: Option<GenerationJob>,
     pan: Vec2,
     zoom: f32,
-    status: String,
 }
 
 struct GenerationJob {
@@ -360,7 +359,6 @@ impl MapgenScene {
             generation: None,
             pan: Vec2::ZERO,
             zoom: MIN_ZOOM,
-            status: String::new(),
         };
         scene.regenerate();
         scene
@@ -495,13 +493,6 @@ impl MapgenScene {
             let _ = sender.send(map);
         });
         self.generation = Some(GenerationJob { receiver });
-        self.status = format!(
-            "Generating {} / {} sites / {} sea / {} rounding...",
-            request.island_type.label(),
-            request.point_count,
-            request.shallow_sea_size.label(),
-            request.bay_rounding.label()
-        );
     }
 
     fn poll_generation(&mut self) {
@@ -510,22 +501,13 @@ impl MapgenScene {
         };
         match result {
             Ok(map) => {
-                let centers = map.centers.len();
                 self.map = Some(map);
                 self.generation = None;
                 self.pan = clamp_pan(self.pan, self.zoom);
-                self.status = format!(
-                    "{} / {} sites / {} sea / {} rounding",
-                    self.island_type.label(),
-                    centers,
-                    self.shallow_sea_size.label(),
-                    self.bay_rounding.label()
-                );
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 self.generation = None;
-                self.status = "Generation failed".to_string();
             }
         }
     }

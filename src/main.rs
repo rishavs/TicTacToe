@@ -89,20 +89,6 @@ fn debug_start_scene() -> Option<Scene> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn window_starts_maximized_without_fullscreen() {
-        let conf = window_conf();
-
-        assert!(start_window_maximized());
-        assert!(!conf.fullscreen);
-        assert!(conf.window_resizable);
-    }
-}
-
 struct DebugCapture {
     path: String,
     frames_remaining: u32,
@@ -128,5 +114,19 @@ impl DebugCapture {
         let image = get_screen_data();
         image.export_png(&self.path);
         std::process::exit(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_starts_maximized_without_fullscreen() {
+        let conf = window_conf();
+
+        assert!(start_window_maximized());
+        assert!(!conf.fullscreen);
+        assert!(conf.window_resizable);
     }
 }

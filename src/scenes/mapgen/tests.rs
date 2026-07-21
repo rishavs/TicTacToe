@@ -279,21 +279,20 @@ fn mask_closing_radius(shallow_sea_size: ShallowSeaSize, grid_width: usize) -> u
 
 fn dilate_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
     let mut out = vec![false; mask.len()];
-    for center_id in 0..mask.len() {
+    for (center_id, value) in out.iter_mut().enumerate() {
         let x = center_id / grid_width;
         let y = center_id % grid_width;
-        out[center_id] =
-            each_square_neighbor(grid_width, x, y, radius).any(|neighbor| mask[neighbor]);
+        *value = each_square_neighbor(grid_width, x, y, radius).any(|neighbor| mask[neighbor]);
     }
     out
 }
 
 fn erode_square_mask(mask: &[bool], grid_width: usize, radius: usize) -> Vec<bool> {
     let mut out = vec![false; mask.len()];
-    for center_id in 0..mask.len() {
+    for (center_id, value) in out.iter_mut().enumerate() {
         let x = center_id / grid_width;
         let y = center_id % grid_width;
-        out[center_id] = square_fits_grid(grid_width, x, y, radius)
+        *value = square_fits_grid(grid_width, x, y, radius)
             && each_square_neighbor(grid_width, x, y, radius).all(|neighbor| mask[neighbor]);
     }
     out
@@ -418,7 +417,6 @@ fn random_seed_keeps_visible_seed_value() {
         generation: None,
         pan: Vec2::ZERO,
         zoom: MIN_ZOOM,
-        status: String::new(),
     };
 
     scene.apply_random_seed_text("12345-6".to_string());
@@ -1001,6 +999,38 @@ fn rivers_lakes_and_shallow_ocean_share_lake_color() {
     assert_eq!(biome::biome_color("SHALLOW_OCEAN"), lake_color);
     assert_eq!(biome::biome_color("RIVER"), lake_color);
     assert_eq!(biome::biome_color("LAKESHORE"), lake_color);
+}
+
+#[test]
+fn lake_shores_use_the_same_dark_outline_as_ocean_coasts() {
+    let land = biome_probe_center(0.4, 0.4);
+    let mut lake = biome_probe_center(0.4, 0.4);
+    lake.water = true;
+    lake.biome = "LAKE";
+    let mut marsh = biome_probe_center(0.05, 0.4);
+    marsh.water = true;
+    marsh.biome = "MARSH";
+    let mut ocean = biome_probe_center(0.0, 0.0);
+    ocean.water = true;
+    ocean.ocean = true;
+    ocean.biome = "DEEP_OCEAN";
+
+    assert_eq!(
+        render::edge_stroke_style(&ocean, &land, 0),
+        Some((2.0, 0x33335a))
+    );
+    assert_eq!(
+        render::edge_stroke_style(&lake, &land, 0),
+        Some((2.0, 0x33335a))
+    );
+    assert_eq!(
+        render::edge_stroke_style(&marsh, &land, 0),
+        Some((1.0, biome::LAKE_WATER_COLOR))
+    );
+    assert_eq!(
+        render::edge_stroke_style(&land, &land, 4),
+        Some((2.0, biome::LAKE_WATER_COLOR))
+    );
 }
 
 #[test]

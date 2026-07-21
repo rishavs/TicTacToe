@@ -38,6 +38,7 @@
 - [x] `src/scenes/play.rs` placeholder scene
 - [x] `src/scenes/battle.rs` placeholder scene
 - [x] `src/scenes/settings.rs` placeholder scene
+- [x] Placeholder scenes share common label/escape handling
 - [x] Escape returns placeholder scenes to the main menu
 
 ## Mapgen Scene
